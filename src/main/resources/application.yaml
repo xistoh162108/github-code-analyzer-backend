@@ -1,0 +1,50 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/springstudy?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
+    username: springuser
+    password: springpassword
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: 'true'
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: Iv23lickmaPy9lxTmt04
+            client-secret: d93c3d36b7f3413f9a690fcd15127a22663d0691
+            scope:
+              - read:user
+              - user:email
+
+jwt:
+  secret: "2/892JwfoycUtzSgm/QrCVaWgyjT2SpfOL1xv9yDA5s3hLFU7vdU+TgNdarMt+ulkq9cOJ/LLgex39mygsk94Q=="
+  access-token:
+    expire-time: 3600000
+  refresh-token:
+    expire-time: 259200000
+
+server:
+  port: '8080'
+
+logging:
+  level:
+    org:
+      springframework: debug
+      springframework.security: debug
+      zerock: debug
+      hibernate:
+        SQL: debug
+
