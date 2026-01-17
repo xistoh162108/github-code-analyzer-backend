@@ -17,22 +17,40 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
-    private String name;
+    @Column(nullable = false, unique = true)
+    private String username; // GitHub Login ID
 
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(unique = true)
-    private String githubId;
+    private String notifyEmail;
 
-    @Column(unique = true)
-    private String githubLogin;
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean notifySprint = true;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean notifyWeekly = true;
+
+    private String profileUrl; // GitHub Avatar URL
+
+    private String location;
+
+    private Integer publicRepos;
+
+    private String company;
+
+    @Column(nullable = false, unique = true)
+    private String githubId; // Keep numerical ID for internal tracking if needed
 
     private LocalDateTime createdAt;
 
     @PrePersist
     private void prePersist() {
         this.createdAt = LocalDateTime.now();
+        if (this.notifyEmail == null) {
+            this.notifyEmail = this.email;
+        }
     }
 }

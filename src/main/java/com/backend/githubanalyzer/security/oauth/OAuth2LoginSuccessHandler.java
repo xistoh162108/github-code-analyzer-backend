@@ -1,7 +1,7 @@
 package com.backend.githubanalyzer.security.oauth;
 
 import com.backend.githubanalyzer.domain.user.entity.User;
-import com.backend.githubanalyzer.domain.user.repository.UserRepository;
+import com.backend.githubanalyzer.domain.user.service.UserService;
 import com.backend.githubanalyzer.security.dto.JwtToken;
 import com.backend.githubanalyzer.security.jwt.JwtTokenProvider;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,14 +16,14 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
 public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private final JwtTokenProvider jwtTokenProvider;
-    private final UserRepository userRepository;
+    private final UserService userService; // Changed from UserRepository
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request,
@@ -31,55 +31,26 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             Authentication authentication) throws IOException {
 
         OAuth2User oauth2User = (OAuth2User) authentication.getPrincipal();
+        Map<String, Object> attributes = oauth2User.getAttributes();
 
-        String githubId = String.valueOf(oauth2User.getAttributes().get("id"));
-        String login = (String) oauth2User.getAttributes().get("login");
-        String name = (String) oauth2User.getAttributes().getOrDefault("name", login);
-        String email = (String) oauth2User.getAttributes().get("email");
+        String githubId = String.valueOf(attributes.get("id"));
+        String username = (String) attributes.get("login");
+        String email = (String) attributes.get("email");
+        String avatarUrl = (String) attributes.get("avatar_url");
+        String location = (String) attributes.get("location");
+        String company = (String) attributes.get("company");
+        Integer publicRepos = (Integer) attributes.get("public_repos");
 
-        // User Persistence
-        Optional<User> userOptional = userRepository.findByGithubId(githubId);
-        User user;
+        // Use Transactional service for syncing
+        User user = userService.syncUserFromGithub(githubId, username, email, avatarUrl, location, company,
+                publicRepos);
 
-        if (userOptional.isPresent()) {
-            user = userOptional.get();
-            user.setName(name);
-            user.setEmail(email != null ? email : user.getEmail());
-            user.setGithubLogin(login);
-            userRepository.save(user);
-        } else {
-            // Fallback: Check if a user with this email already exists
-            Optional<User> emailUserOptional = (email != null)
-                    ? userRepository.findByEmail(email)
-                    : Optional.empty();
-
-            if (emailUserOptional.isPresent()) {
-                user = emailUserOptional.get();
-                user.setGithubId(githubId);
-                user.setGithubLogin(login);
-                user.setName(name);
-                userRepository.save(user);
-            } else {
-                user = User.builder()
-                        .githubId(githubId)
-                        .githubLogin(login)
-                        .name(name)
-                        .email(email != null ? email : githubId + "@github.com")
-                        .build();
-                userRepository.save(user);
-            }
-        }
-
-        // Issue JWT representing our internal user
+        // Issue JWT
         String subject = user.getEmail();
         Authentication jwtAuth = new UsernamePasswordAuthenticationToken(subject, null,
                 List.of(new SimpleGrantedAuthority("ROLE_USER")));
         JwtToken token = jwtTokenProvider.generateToken(jwtAuth);
 
-        // Backend-only test redirect: return JWT as JSON via a specialized endpoint
-        // For simplicity, we can redirect to a URL that the frontend or the user can
-        // inspect
-        // The user specifically asked for backend testing without frontend.
         response.sendRedirect("/api/auth/test/success?accessToken=" + token.getAccessToken() + "&refreshToken="
                 + token.getRefreshToken());
     }
