@@ -25,6 +25,7 @@ services:
     volumes:
       # Mount the private key from host's defined path to a fixed container path
       - ${GITHUB_APP_PRIVATE_KEY_PATH}:/app/private-key.pem
+      - ./logs:/app/logs
 
   mysql:
     image: mysql:8.0
