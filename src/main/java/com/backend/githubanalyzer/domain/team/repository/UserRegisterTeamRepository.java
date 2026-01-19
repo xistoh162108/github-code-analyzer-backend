@@ -12,4 +12,6 @@ public interface UserRegisterTeamRepository extends JpaRepository<UserRegisterTe
     List<UserRegisterTeam> findByTeamId(String teamId);
 
     List<UserRegisterTeam> findByTeamIdAndStatus(String teamId, String status);
+
+    long countByTeamId(String teamId);
 }

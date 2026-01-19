@@ -10,4 +10,6 @@ import java.util.List;
 @Repository
 public interface TeamHasRepoRepository extends JpaRepository<TeamHasRepo, TeamHasRepoId> {
     List<TeamHasRepo> findByRepositoryId(String repoId);
+
+    List<TeamHasRepo> findByTeamId(String teamId);
 }

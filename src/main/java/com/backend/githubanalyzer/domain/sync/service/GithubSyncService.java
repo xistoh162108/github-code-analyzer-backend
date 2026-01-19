@@ -23,6 +23,7 @@ public class GithubSyncService {
     private final GithubApiService githubApiService;
     private final GithubPersistenceService githubPersistenceService;
     private final com.backend.githubanalyzer.domain.user.service.UserService userService;
+    private final com.backend.githubanalyzer.domain.team.service.TeamService teamService;
 
     public User findUserByGithubId(String githubId) {
         return userService.findByGithubId(githubId);
@@ -144,6 +145,14 @@ public class GithubSyncService {
             repository.setSyncStatus("COMPLETED");
             repository.setLastSyncAt(LocalDateTime.now());
             githubPersistenceService.refreshRepoStats(repository);
+            com.backend.githubanalyzer.domain.team.dto.TeamCreateRequest teamRequest = new com.backend.githubanalyzer.domain.team.dto.TeamCreateRequest(
+                    repository.getReponame(),
+                    repository.getDescription(),
+                    user.getId() // 또는 repository.getOwner().getId()
+            );
+
+            String teamId = teamService.createTeam(teamRequest);
+            teamService.addRepoToTeam(teamId, repository);
         } catch (Exception e) {
             log.error("Single repo sync failed: {}", e.getMessage());
         }
