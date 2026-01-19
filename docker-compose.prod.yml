@@ -12,9 +12,9 @@ services:
       SPRING_DATASOURCE_PASSWORD: springpassword
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
-      # .env Secrets should be passed here or loaded
+      # .env Secrets
       GITHUB_APP_ID: ${GITHUB_APP_ID}
-      GITHUB_APP_PRIVATE_KEY_PATH: ${GITHUB_APP_PRIVATE_KEY_PATH}
+      GITHUB_APP_PRIVATE_KEY_PATH: /app/private-key.pem
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
     depends_on:
@@ -23,8 +23,8 @@ services:
       redis:
         condition: service_started
     volumes:
-      # Mount the private key file into the container
-      - ${GITHUB_APP_PRIVATE_KEY_PATH}:${GITHUB_APP_PRIVATE_KEY_PATH}
+      # Mount the private key from host's defined path to a fixed container path
+      - ${GITHUB_APP_PRIVATE_KEY_PATH}:/app/private-key.pem
 
   mysql:
     image: mysql:8.0
