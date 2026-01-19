@@ -26,7 +26,6 @@ public class GithubSyncService {
     private final GithubPersistenceService githubPersistenceService;
     private final com.backend.githubanalyzer.domain.user.service.UserService userService;
     private final GithubAppService githubAppService;
-    private final com.backend.githubanalyzer.domain.team.service.TeamService teamService;
 
     public User findUserByGithubId(String githubId) {
         return userService.findByGithubId(githubId);
@@ -179,15 +178,18 @@ public class GithubSyncService {
             repository.setLastSyncAt(LocalDateTime.now());
             githubPersistenceService.refreshRepoStats(repository);
 
-            // Team Service Integration (From dev branch)
-            com.backend.githubanalyzer.domain.team.dto.TeamCreateRequest teamRequest = new com.backend.githubanalyzer.domain.team.dto.TeamCreateRequest(
-                    repository.getReponame(),
-                    repository.getDescription(),
-                    user.getId() // 또는 repository.getOwner().getId()
-            );
-
-            String teamId = teamService.createTeam(teamRequest);
-            teamService.addRepoToTeam(teamId, repository);
+            // Team Service Integration (From dev branch) - DISABLED for Production Safety
+            /*
+             * com.backend.githubanalyzer.domain.team.dto.TeamCreateRequest teamRequest =
+             * new com.backend.githubanalyzer.domain.team.dto.TeamCreateRequest(
+             * repository.getReponame(),
+             * repository.getDescription(),
+             * user.getId() // 또는 repository.getOwner().getId()
+             * );
+             * 
+             * String teamId = teamService.createTeam(teamRequest);
+             * teamService.addRepoToTeam(teamId, repository);
+             */
         } catch (Exception e) {
             log.error("Single repo sync failed: {}", e.getMessage());
         }
@@ -225,8 +227,21 @@ public class GithubSyncService {
 
     private void syncCommitsForRepo(String owner, GithubRepository repository, User repositoryOwner,
             String accessToken) {
-        // ... (existing code stays the same, maybe refactor to use
-        // syncCommitsForBranch)
+
+        // --- Added: Fetch and Save Languages ---
+        try {
+            java.util.Map<String, Long> languages = githubApiService
+                    .fetchRepositoryLanguages(owner, repository.getReponame(), accessToken).block();
+            if (languages != null) {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                repository.setLanguages(mapper.writeValueAsString(languages));
+                githubPersistenceService.save(repository); // Intermediate save
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch languages for repo: {}", repository.getReponame(), e);
+        }
+        // ---------------------------------------
+
         String repoName = repository.getReponame();
 
         log.info("Fetching branches for repo: {}", repoName);
@@ -242,20 +257,8 @@ public class GithubSyncService {
         }
 
         List<GithubBranchResponse> branches = branchResponse.data();
-        // If 304, we might still need to check commits if we don't trust GitHub's 304
-        // on
-        // branches?
-        // Actually, if branches didn't change, maybe we still need to check for new
-        // commits in existing branches.
-        // So let's fetch existing branches if 304? No, GitHub branches API changes if
-        // any branch head changes.
         if (branchResponse.notModified()) {
             log.info("No changes in branches for repo: {} (304 Not Modified)", repoName);
-            // We should still potentially check commits in existing branches because
-            // 'since'
-            // is better than ETag for commits.
-            // But how to get branch list if it's 304? We need to store them.
-            // For now, let's assume if branches are 304, we skip deep commit check.
             return;
         }
 

@@ -53,6 +53,20 @@ public class OpenAiClient {
                         log.error("Failed to parse OpenAI response", e);
                         throw new RuntimeException("AI response parsing failed", e);
                     }
-                });
+                })
+                .retryWhen(reactor.util.retry.Retry.backoff(3, java.time.Duration.ofSeconds(2))
+                        .filter(throwable -> {
+                            // Retry on WebClientResponseException (5xx) or Timeout
+                            if (throwable instanceof org.springframework.web.reactive.function.client.WebClientResponseException) {
+                                return ((org.springframework.web.reactive.function.client.WebClientResponseException) throwable)
+                                        .getStatusCode().is5xxServerError();
+                            }
+                            return throwable instanceof java.util.concurrent.TimeoutException ||
+                                    throwable instanceof java.io.IOException;
+                        })
+                        .onRetryExhaustedThrow((retryBackoffSpec, retrySignal) -> {
+                            log.error("OpenAI API retry exhausted after {} attempts", retrySignal.totalRetries());
+                            return retrySignal.failure();
+                        }));
     }
 }

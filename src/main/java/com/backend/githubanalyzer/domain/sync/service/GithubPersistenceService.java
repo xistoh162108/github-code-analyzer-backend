@@ -54,13 +54,31 @@ public class GithubPersistenceService {
                 .orElse(null);
     }
 
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+
+    // ... (Constructor injection handled by Lombok, but ensure field is declared)
+
+    // Note: I will insert the field with other fields
+
     private GithubRepositoryResponse toDto(GithubRepository repository) {
+        java.util.Map<String, Long> languagesMap = null;
+        try {
+            if (repository.getLanguages() != null) {
+                languagesMap = objectMapper.readValue(repository.getLanguages(),
+                        new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Long>>() {
+                        });
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse languages JSON for repo: {}", repository.getReponame());
+        }
+
         return GithubRepositoryResponse.builder()
                 .id(repository.getId())
                 .reponame(repository.getReponame())
                 .repoUrl(repository.getRepoUrl())
                 .description(repository.getDescription())
                 .language(repository.getLanguage())
+                .languages(languagesMap) // Added
                 .size(repository.getSize())
                 .stars(repository.getStars())
                 .createdAt(repository.getCreatedAt())

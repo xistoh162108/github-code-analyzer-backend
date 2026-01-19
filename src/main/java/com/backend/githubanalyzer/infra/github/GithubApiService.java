@@ -28,9 +28,12 @@ import java.util.regex.Pattern;
 public class GithubApiService {
 
     private final WebClient webClient;
+    private final com.backend.githubanalyzer.global.monitor.MetricsService metricsService;
 
-    public GithubApiService(WebClient.Builder webClientBuilder) {
+    public GithubApiService(WebClient.Builder webClientBuilder,
+            com.backend.githubanalyzer.global.monitor.MetricsService metricsService) {
         this.webClient = webClientBuilder.baseUrl("https://api.github.com").build();
+        this.metricsService = metricsService;
     }
 
     public record GithubResponse<T>(List<T> data, String etag, boolean notModified) {
@@ -42,6 +45,7 @@ public class GithubApiService {
     }
 
     public Mono<GithubUserResponse> fetchUserByUsername(String username, String accessToken) {
+        metricsService.incrementExternalRequest("github");
         return webClient.get()
                 .uri("/users/{username}", username)
                 .header("Authorization", "Bearer " + accessToken)
@@ -67,6 +71,7 @@ public class GithubApiService {
 
     private <T> Mono<GithubResponse<T>> fetchAllPagesWrapped(String url, String accessToken, String etag,
             Class<T> clazz) {
+        metricsService.incrementExternalRequest("github");
         WebClient.RequestHeadersSpec<?> request = webClient.get()
                 .uri(url)
                 .header("Authorization", "Bearer " + accessToken);
@@ -99,6 +104,7 @@ public class GithubApiService {
     }
 
     private <T> Mono<List<T>> fetchAllPagesRecursive(String url, String accessToken, Class<T> clazz) {
+        metricsService.incrementExternalRequest("github");
         return webClient.get()
                 .uri(url)
                 .header("Authorization", "Bearer " + accessToken)
@@ -118,11 +124,22 @@ public class GithubApiService {
     }
 
     public Mono<GithubCommitResponse> fetchCommitDetail(String owner, String repo, String sha, String accessToken) {
+        metricsService.incrementExternalRequest("github");
         return webClient.get()
                 .uri("/repos/{owner}/{repo}/commits/{sha}", owner, repo, sha)
                 .header("Authorization", "Bearer " + accessToken)
                 .retrieve()
                 .bodyToMono(GithubCommitResponse.class);
+    }
+
+    public Mono<java.util.Map<String, Long>> fetchRepositoryLanguages(String owner, String repo, String accessToken) {
+        metricsService.incrementExternalRequest("github");
+        return webClient.get()
+                .uri("/repos/{owner}/{repo}/languages", owner, repo)
+                .header("Authorization", "Bearer " + accessToken)
+                .retrieve()
+                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<java.util.Map<String, Long>>() {
+                });
     }
 
     private String extractNextUrl(ClientResponse response) {

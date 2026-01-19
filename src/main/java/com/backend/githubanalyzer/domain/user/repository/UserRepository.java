@@ -27,4 +27,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     // 3. Existence Check
     boolean existsByUsername(String username);
+
+    // 4. Counts
+    long countByIsGhostTrue();
 }

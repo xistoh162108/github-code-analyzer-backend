@@ -23,10 +23,57 @@ public class SprintService {
 
     public java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintTeamRankingResponse> getSprintRankings(
             String sprintId) {
+        Sprint sprint = getSprint(sprintId);
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+
+        // Req 11: Pre-start opacity - If before start, return empty unless manager
+        // (assumed check at controller or here)
+        // For public API, if before start, maybe return empty list?
+        if (now.isBefore(sprint.getStartDate())) {
+            // For simplicity, return empty list if not started, unless caller handles
+            // permission.
+            // But since this is public ranking, we hide it.
+            return new java.util.ArrayList<>();
+        }
+
         java.util.List<com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint> registrations = teamRegisterSprintRepository
                 .findAllBySprintId(sprintId);
 
-        // Sort by Score Descending
+        // Filter: Only APPROVED teams should be in ranking
+        registrations = registrations.stream()
+                .filter(reg -> "APPROVED".equals(reg.getStatus()))
+                .collect(java.util.stream.Collectors.toList());
+
+        // Req 9: Time-bounded scoring
+        java.time.LocalDateTime effectiveEnd = now.isAfter(sprint.getEndDate()) ? sprint.getEndDate() : now;
+
+        // Recalculate or use stored score? Req implies we need to calculate based on
+        // repo score.
+        // For performance, we might want to use stored `reg.getScore()`, but we need to
+        // ensure it's up to date.
+        // Let's assume `reg.getScore()` is updated via SyncService or we calculate on
+        // fly here for accuracy.
+        // Given implementations: let's use the stored score for now, assuming
+        // SyncService updates `TeamRegisterSprint.score`.
+
+        // Correct approach based on Req 9: "Score of Repo".
+        // If we want real-time accuracy:
+        for (com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint reg : registrations) {
+            // Logic: Update score from Repository entity or calculation
+            if (reg.getRepository() != null) {
+                // For now, mapping Repository Score to Sprint Score directly.
+                // Ideally this should be "Score gained DURING Sprint".
+                // But detailed commit analysis is complex here.
+                // Using Repository Total Score as proxy based on current architecture,
+                // OR if `commitRepository` has `sumScore...` between dates.
+                Long score = commitRepository.sumTotalScoreByRepo(reg.getRepository().getId(), sprint.getStartDate(),
+                        effectiveEnd);
+                reg.setScore(score != null ? score : 0L);
+                // Note: We are not saving here to avoid write overhead on read, but for ranking
+                // we use calculated value.
+            }
+        }
+
         registrations.sort((a, b) -> Long.compare(b.getScore(), a.getScore()));
 
         java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintTeamRankingResponse> rankings = new java.util.ArrayList<>();
@@ -46,11 +93,21 @@ public class SprintService {
     public java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintIndividualRankingResponse> getSprintIndividualRankings(
             String sprintId) {
         Sprint sprint = getSprint(sprintId);
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+
+        if (now.isBefore(sprint.getStartDate())) {
+            return new java.util.ArrayList<>();
+        }
+
+        java.time.LocalDateTime end = now.isAfter(sprint.getEndDate()) ? sprint.getEndDate() : now;
         java.time.LocalDateTime start = sprint.getStartDate();
-        java.time.LocalDateTime end = sprint.getEndDate();
 
         java.util.List<com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint> registrations = teamRegisterSprintRepository
                 .findAllBySprintId(sprintId);
+
+        registrations = registrations.stream()
+                .filter(reg -> "APPROVED".equals(reg.getStatus()))
+                .collect(java.util.stream.Collectors.toList());
 
         // List to hold all participants' dynamic stats
         class ParticipantStats {
@@ -81,7 +138,6 @@ public class SprintService {
             }
         }
 
-        // Sort by Score Descending
         allStats.sort((a, b) -> Long.compare(b.score, a.score));
 
         java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintIndividualRankingResponse> response = new java.util.ArrayList<>();
@@ -90,7 +146,7 @@ public class SprintService {
             response.add(new com.backend.githubanalyzer.domain.sprint.dto.SprintIndividualRankingResponse(
                     rank++,
                     p.user.getUsername(),
-                    p.user.getUsername(), // Using username for both fields for now, or use githubId/login if available
+                    p.user.getUsername(),
                     p.user.getProfileUrl(),
                     p.score,
                     p.commits));
@@ -120,6 +176,48 @@ public class SprintService {
         return sprintId;
     }
 
+    // Req 1 & 4 & 10: Update Sprint
+    @Transactional
+    public void updateSprint(String sprintId, com.backend.githubanalyzer.domain.sprint.dto.SprintCreateRequest request,
+            Long userId) {
+        Sprint sprint = getSprint(sprintId);
+
+        // Req 1: Manager Only
+        if (!sprint.getManager().getId().equals(userId)) {
+            throw new AccessDeniedException("Only Sprint Manager can update the sprint.");
+        }
+
+        // Req 4: Name uneditable (Ignore request.name or throw if different? Let's just
+        // not update it)
+
+        // Req 3: Private -> Public OK, Public -> Private NO
+        if (!sprint.getIsPrivate() && request.isPrivate()) {
+            throw new IllegalArgumentException("Cannot change Public Sprint to Private.");
+        }
+        sprint.setIsPrivate(request.isPrivate());
+
+        // Req 10: Date adjustments
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+
+        // If End Date passed, cannot change? Req says "Before End Date, End Date
+        // adjustable".
+        // Implicitly if passed, maybe locked. But code says "current > when
+        // manipulating".
+        // If current < endDate, we can change endDate.
+        if (now.isBefore(sprint.getEndDate())) {
+            sprint.setEndDate(request.endDate());
+        }
+
+        if (now.isBefore(sprint.getStartDate())) {
+            sprint.setStartDate(request.startDate());
+        }
+
+        sprint.setDescription(request.description());
+        sprint.setIsOpen(request.isOpen());
+
+        sprintRepository.save(sprint);
+    }
+
     public Sprint getSprint(String sprintId) {
         return sprintRepository.findById(sprintId)
                 .orElseThrow(() -> new IllegalArgumentException("Sprint not found: " + sprintId));
@@ -132,7 +230,84 @@ public class SprintService {
         }
     }
 
+    // Register Team (Req 1, 5, 6, 12, Leader Constraint, 1 Repo Constraint)
+    @Transactional
+    public void registerTeamToSprint(String sprintId, String teamId, String repoId, Long userId) {
+        Sprint sprint = getSprint(sprintId);
+
+        // Req 5: Must be Open
+        if (!sprint.getIsOpen()) {
+            throw new IllegalStateException("Sprint is closed for registration.");
+        }
+
+        com.backend.githubanalyzer.domain.team.entity.Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("Team not found"));
+
+        // Req: Leader Only
+        if (!team.getLeader().getId().equals(userId)) {
+            throw new AccessDeniedException("Only Team Leader can register the team.");
+        }
+
+        // Req: 1 Repo per Team (UniqueConstraint handles implementation, but business
+        // logic check good)
+        if (teamRegisterSprintRepository.existsBySprintIdAndTeamId(sprintId, teamId)) {
+            throw new IllegalStateException("Team is already registered for this sprint.");
+        }
+
+        // If Private, check logic? Req 6 says "Enter Participation Code (Sprint ID)".
+        // Since API call includes sprintId, we assume user knows it.
+
+        String status = "APPROVED";
+        if (sprint.getIsPrivate()) {
+            status = "PENDING"; // Req 12: Manager approval needed
+        }
+
+        com.backend.githubanalyzer.domain.repository.entity.GithubRepository repo = com.backend.githubanalyzer.domain.repository.entity.GithubRepository
+                .builder().id(repoId).build(); // Proxy
+
+        com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint registration = com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint
+                .builder()
+                .id(new com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprintId(sprintId, teamId, repoId))
+                .sprint(sprint)
+                .team(team)
+                .repository(repo)
+                .status(status)
+                .build();
+
+        teamRegisterSprintRepository.save(registration);
+    }
+
+    // Req 12: Approve/Reject
+    @Transactional
+    public void approveTeamRegistration(String sprintId, String teamId, Long managerId, boolean approve) {
+        Sprint sprint = getSprint(sprintId);
+        if (!sprint.getManager().getId().equals(managerId)) {
+            throw new AccessDeniedException("Only Manager can approve/reject.");
+        }
+
+        com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint reg = teamRegisterSprintRepository
+                .findBySprintIdAndTeamId(sprintId, teamId)
+                .orElseThrow(() -> new IllegalArgumentException("Registration not found"));
+
+        if (approve) {
+            reg.setStatus("APPROVED");
+        } else {
+            // Req 12: Rejected team can apply again -> Delete registration? or set REJECTED
+            // If set REJECTED, unique validation might block re-apply.
+            // Req says "Can apply again". So deleting is better, or 'REJECTED' status
+            // allows re-apply (would require composite key change or validation change).
+            // Simpler: Delete registration so they can try again.
+            // OR: Set REJECTED, and update 'registerTeamToSprint' to allow overwrite if
+            // REJECTED.
+            // Let's Delete for simplicity as "Rejecting" usually implies "Go away".
+            // Actually, letting them re-apply specifically suggests we should clear the
+            // state.
+            teamRegisterSprintRepository.delete(reg);
+        }
+    }
+
     public java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintResponse> getPublicSprints() {
+        // Req 8: Private not searchable
         java.util.List<Sprint> sprints = sprintRepository.findByIsPrivateFalse();
         return sprints.stream().map(sprint -> {
             long teamsCount = teamRegisterSprintRepository.countBySprintId(sprint.getId());
@@ -192,6 +367,10 @@ public class SprintService {
                 .build();
 
         bannedTeamRepository.save(ban);
+
+        // Update Status to BANNED
+        teamRegisterSprintRepository.findBySprintIdAndTeamId(sprintId, teamId)
+                .ifPresent(reg -> reg.setStatus("BANNED"));
     }
 
     public void validateSprintIdAccess(String sprintId, com.backend.githubanalyzer.domain.user.entity.User user) {
@@ -199,6 +378,13 @@ public class SprintService {
 
         // Manager always has access
         if (sprint.getManager().getId().equals(user.getId())) {
+            return;
+        }
+
+        // Req: If not private, anyone can view? Req 8 says "Sprint Private -> Search
+        // Impossible".
+        // Implicitly Public is Viewable.
+        if (!sprint.getIsPrivate()) {
             return;
         }
 
@@ -215,5 +401,23 @@ public class SprintService {
         }
 
         throw new AccessDeniedException("You do not have permission to view this Sprint ID.");
+    }
+
+    public java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintResponse> getMyParticipatingSprints(
+            Long userId) {
+        java.util.List<com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint> registrations = teamRegisterSprintRepository
+                .findSprintsByUserId(userId);
+
+        return registrations.stream()
+                .map(reg -> {
+                    Sprint sprint = reg.getSprint();
+                    long teamsCount = teamRegisterSprintRepository.countBySprintId(sprint.getId());
+                    long participantsCount = teamRegisterSprintRepository.countParticipantsBySprintId(sprint.getId());
+                    String status = determineStatus(sprint);
+                    return com.backend.githubanalyzer.domain.sprint.dto.SprintResponse.from(sprint, teamsCount,
+                            participantsCount, status);
+                })
+                .distinct()
+                .collect(java.util.stream.Collectors.toList());
     }
 }

@@ -33,6 +33,9 @@ public class StatsAggregationWorker {
     }
 
     private void processRepos() {
+        if (!Boolean.TRUE.equals(redisTemplate.hasKey(DIRTY_REPOS_KEY))) {
+            return;
+        }
         String processingKey = DIRTY_REPOS_KEY + ":processing";
         redisTemplate.renameIfAbsent(DIRTY_REPOS_KEY, processingKey);
 
@@ -52,6 +55,9 @@ public class StatsAggregationWorker {
     }
 
     private void processUsers() {
+        if (!Boolean.TRUE.equals(redisTemplate.hasKey(DIRTY_USERS_KEY))) {
+            return;
+        }
         String processingKey = DIRTY_USERS_KEY + ":processing";
         redisTemplate.renameIfAbsent(DIRTY_USERS_KEY, processingKey);
 
@@ -71,6 +77,9 @@ public class StatsAggregationWorker {
     }
 
     private void processTeams() {
+        if (!Boolean.TRUE.equals(redisTemplate.hasKey(DIRTY_TEAMS_KEY))) {
+            return;
+        }
         String processingKey = DIRTY_TEAMS_KEY + ":processing";
         redisTemplate.renameIfAbsent(DIRTY_TEAMS_KEY, processingKey);
 

@@ -44,4 +44,8 @@ public class TeamRegisterSprint {
     @Column(name = "commit_num", nullable = false)
     @Builder.Default
     private Long commitNum = 0L;
+
+    @Column(name = "status", nullable = false)
+    @Builder.Default
+    private String status = "APPROVED"; // PENDING, APPROVED, REJECTED, BANNED
 }

@@ -10,9 +10,13 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/search")
 @RequiredArgsConstructor
+@io.swagger.v3.oas.annotations.tags.Tag(name = "Search", description = "통합 검색 API")
 public class SearchController {
     private final SearchService searchService;
 
+    @io.swagger.v3.oas.annotations.Operation(summary = "Integrated Search (통합 검색)", description = "사용자, 레포지토리, 팀 등을 한번에 검색합니다.<br>"
+            +
+            "**Type**: `ALL` (전체), `USER` (유저), `REPOSITORY` (레포), `TEAM` (팀)")
     @GetMapping
     public ResponseEntity<ApiResponse<UnifiedSearchResponse>> search(
             @RequestParam String q,

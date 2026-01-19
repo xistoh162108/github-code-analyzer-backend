@@ -15,4 +15,6 @@ public interface GithubRepositoryRepository extends JpaRepository<GithubReposito
     List<GithubRepository> findAllByOwnerId(Long ownerId);
 
     List<GithubRepository> findAllByReponameContainingIgnoreCase(String reponame);
+
+    long countBySyncStatus(String syncStatus);
 }

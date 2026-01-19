@@ -31,6 +31,7 @@ public class TeamService {
     private final TeamHasRepoRepository teamHasRepoRepository;
     private final UserRepository userRepository;
     private final com.backend.githubanalyzer.domain.commit.repository.CommitRepository commitRepository;
+    private final com.backend.githubanalyzer.domain.team.repository.TeamRegisterSprintRepository teamRegisterSprintRepository;
 
     @Transactional
     public void addMemberToTeam(Team team, User user, String role) {
@@ -56,82 +57,6 @@ public class TeamService {
                 log.info("Upgraded user {} in team {} to CONTRIBUTOR", user.getUsername(), team.getName());
             }
         }
-    }
-
-    @Transactional
-    public void applyToJoinTeam(String teamId, User user) {
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new IllegalArgumentException("Team not found for ID: " + teamId));
-
-        UserRegisterTeamId membershipId = new UserRegisterTeamId(teamId, user.getId());
-        if (userRegisterTeamRepository.existsById(membershipId)) {
-            throw new IllegalStateException("Already a member or has a pending request.");
-        }
-
-        UserRegisterTeam request = UserRegisterTeam.builder()
-                .id(membershipId)
-                .team(team)
-                .user(user)
-                .role("MEMBER")
-                .status("PENDING")
-                .build();
-        userRegisterTeamRepository.save(request);
-        log.info("User {} applied to join team {}", user.getUsername(), team.getName());
-    }
-
-    @Transactional(readOnly = true)
-    public List<User> listPendingRequests(String teamId, User leader) {
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new IllegalArgumentException("Team not found"));
-
-        if (!team.getLeader().getId().equals(leader.getId())) {
-            throw new AccessDeniedException("Only the Team Leader can view pending requests.");
-        }
-
-        return userRegisterTeamRepository.findByTeamIdAndStatus(teamId, "PENDING").stream()
-                .map(UserRegisterTeam::getUser)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional
-    public void approveMember(String teamId, Long userId, User leader) {
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new IllegalArgumentException("Team not found"));
-
-        if (!team.getLeader().getId().equals(leader.getId())) {
-            throw new AccessDeniedException("Only the Team Leader can approve members.");
-        }
-
-        UserRegisterTeamId membershipId = new UserRegisterTeamId(teamId, userId);
-        UserRegisterTeam membership = userRegisterTeamRepository.findById(membershipId)
-                .orElseThrow(() -> new IllegalArgumentException("No join request found for this user."));
-
-        membership.setStatus("APPROVED");
-        userRegisterTeamRepository.save(membership);
-        log.info("Leader {} approved user {} into team {}", leader.getUsername(), userId, team.getName());
-    }
-
-    @Transactional
-    public void removeMember(String teamId, Long userId, User leader) {
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new IllegalArgumentException("Team not found"));
-
-        if (!team.getLeader().getId().equals(leader.getId())) {
-            throw new AccessDeniedException("Only the Team Leader can remove members.");
-        }
-
-        UserRegisterTeamId membershipId = new UserRegisterTeamId(teamId, userId);
-        UserRegisterTeam membership = userRegisterTeamRepository.findById(membershipId)
-                .orElseThrow(() -> new IllegalArgumentException("User is not in the team."));
-
-        // Constraint: Cannot remove contributors
-        if ("CONTRIBUTOR".equals(membership.getRole())) {
-            throw new IllegalStateException(
-                    "Cannot remove a member who is a direct contributor to the team's repositories.");
-        }
-
-        userRegisterTeamRepository.delete(membership);
-        log.info("Leader {} removed user {} from team {}", leader.getUsername(), userId, team.getName());
     }
 
     @Transactional
@@ -207,11 +132,11 @@ public class TeamService {
     }
 
     // 1. 팀 생성
-    public String createTeam(TeamCreateRequest request) {
+    public String createTeam(com.backend.githubanalyzer.domain.team.dto.TeamCreateRequest request) {
         User leader = userRepository.findById(request.leaderId())
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-        String teamId = UUID.randomUUID().toString();
+        String teamId = java.util.UUID.randomUUID().toString();
 
         Team team = Team.builder()
                 .id(teamId) // String ID
@@ -236,6 +161,122 @@ public class TeamService {
         userRegisterTeamRepository.save(member);
 
         return teamId;
+    }
+
+    // 4. Team Update (Name & Description) - Leader Only
+    @Transactional
+    public void updateTeam(String teamId, com.backend.githubanalyzer.domain.team.dto.TeamUpdateRequest request,
+            User user) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("Team not found"));
+
+        if (!team.getLeader().getId().equals(user.getId())) {
+            throw new AccessDeniedException("Only Team Leader can update team details.");
+        }
+
+        team.setName(request.name());
+        team.setDescription(request.description());
+        // team.setIsPublic(request.isPublic()); // If we want to allow public switch
+
+        teamRepository.save(team);
+    }
+
+    // 5. Team Details (Visibility Logic)
+    @Transactional(readOnly = true)
+    public com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse getTeamDetails(String teamId, User user) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("Team not found"));
+
+        boolean isMember = isUserInTeam(teamId, user.getId());
+        boolean isLeader = team.getLeader().getId().equals(user.getId());
+
+        // Sprint Manager check? (Req 9)
+        // Need to check if this team is in any sprint managed by 'user'
+        // Complex query: Find Sprints where (Manager=user AND TeamRegistered in Sprint)
+        // Or simplified: Pass a flag if caller is manager context.
+        // For general API, we'll check:
+        // isPublic OR isMember OR isLeader -> Full Details
+
+        // Check if user is manager of ANY sprint this team is in
+        boolean isSprintManager = teamRegisterSprintRepository.findAllByTeamId(teamId).stream()
+                .anyMatch(reg -> reg.getSprint().getManager().getId().equals(user.getId()));
+
+        if (team.getIsPublic() || isMember || isLeader || isSprintManager) {
+            return com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse.from(team); // Full
+        } else {
+            // Limited View (Req 8)
+            return com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse.limited(team);
+        }
+    }
+
+    @Transactional
+    public void joinTeam(String teamId, User user, String code) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("Team not found"));
+
+        if (isUserInTeam(teamId, user.getId())) {
+            throw new IllegalStateException("Already a member or has a pending request.");
+        }
+
+        String status = "APPROVED";
+        if (!team.getIsPublic()) {
+            // Private Team: Check Code
+            if (!team.getId().equals(code)) {
+                throw new AccessDeniedException("Invalid Team Code.");
+            }
+            status = "PENDING";
+        }
+
+        UserRegisterTeam request = UserRegisterTeam.builder()
+                .id(new UserRegisterTeamId(teamId, user.getId()))
+                .team(team)
+                .user(user)
+                .role("MEMBER")
+                .status(status)
+                .inTeamRank(0L)
+                .build();
+        userRegisterTeamRepository.save(request);
+    }
+
+    @Transactional
+    public void approveMember(String teamId, Long userId, User leader) {
+        // Logic same as existing, just ensuring status transition
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("Team not found"));
+
+        if (!team.getLeader().getId().equals(leader.getId())) {
+            throw new AccessDeniedException("Only the Team Leader can approve members.");
+        }
+
+        UserRegisterTeam membership = userRegisterTeamRepository.findById(new UserRegisterTeamId(teamId, userId))
+                .orElseThrow(() -> new IllegalArgumentException("No join request found."));
+
+        membership.setStatus("APPROVED");
+        userRegisterTeamRepository.save(membership);
+    }
+
+    @Transactional
+    public void removeMember(String teamId, Long userId, User leader) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("Team not found"));
+
+        if (!team.getLeader().getId().equals(leader.getId())) {
+            throw new AccessDeniedException("Only the Team Leader can remove members.");
+        }
+
+        // Constraint 10: Cannot remove if committed
+        List<String> repoIds = teamHasRepoRepository.findByTeamId(teamId).stream()
+                .map(m -> m.getRepository().getId())
+                .collect(Collectors.toList());
+
+        if (!repoIds.isEmpty() && commitRepository.existsByAuthorIdAndRepositoryIdIn(userId, repoIds)) {
+            throw new IllegalStateException("Cannot remove a member who has contributed commits to team repositories.");
+        }
+
+        UserRegisterTeam membership = userRegisterTeamRepository.findById(new UserRegisterTeamId(teamId, userId))
+                .orElseThrow(() -> new IllegalArgumentException("User is not in the team."));
+
+        userRegisterTeamRepository.delete(membership);
     }
 
     // 2. 팀 멤버 조회 (DTO 반환)

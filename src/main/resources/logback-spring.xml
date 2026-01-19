@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- 로그 파일 저장 경로 -->
+    <property name="LOGS_PATH" value="./logs"/>
+
+    <!-- 콘솔 출력 패턴 -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 파일 출력 설정 (Rolling) -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOGS_PATH}/application.log</file>
+        
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- 일자별 로그 파일 저장 경로 및 이름 패턴 -->
+            <fileNamePattern>${LOGS_PATH}/archived/application-%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- 로그 파일 보관 기간 (30일) -->
+            <maxHistory>30</maxHistory>
+            <!-- 전체 로그 파일 크기 제한 (선택 사항, 예: 3GB) -->
+            <totalSizeCap>3GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- 로거 설정 -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+    <!-- 특정 패키지 상세 로그 -->
+    <logger name="com.backend.githubanalyzer" level="DEBUG"/>
+</configuration>

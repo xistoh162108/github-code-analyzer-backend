@@ -38,3 +38,7 @@ out/
 
 ### Environment Variables ###
 .env
+
+# Security
+*.pem
+*.key

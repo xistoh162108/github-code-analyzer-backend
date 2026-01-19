@@ -17,6 +17,7 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
     show-sql: 'true'
 
   data:
@@ -67,4 +68,18 @@ github:
     private-key-path: ${GITHUB_APP_PRIVATE_KEY_PATH:/Users/bagjimin/Downloads/madcamp-week2-demo.2026-01-18.private-key.pem}
   webhook:
     secret: ${GITHUB_WEBHOOK_SECRET:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: spring-study-backend
 

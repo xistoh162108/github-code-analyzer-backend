@@ -21,4 +21,5 @@ public class GithubRepositoryResponse {
     private LocalDateTime updatedAt;
     private LocalDateTime pushedAt;
     private LocalDateTime lastSyncAt;
+    private java.util.Map<String, Long> languages;
 }

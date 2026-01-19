@@ -17,4 +17,14 @@ public interface TeamRegisterSprintRepository extends JpaRepository<TeamRegister
     long countParticipantsBySprintId(@org.springframework.data.repository.query.Param("sprintId") String sprintId);
 
     java.util.List<TeamRegisterSprint> findAllBySprintId(String sprintId);
+
+    boolean existsBySprintIdAndTeamId(String sprintId, String teamId);
+
+    java.util.Optional<TeamRegisterSprint> findBySprintIdAndTeamId(String sprintId, String teamId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT trs FROM TeamRegisterSprint trs JOIN UserRegisterTeam urt ON trs.team.id = urt.team.id WHERE urt.user.id = :userId")
+    java.util.List<TeamRegisterSprint> findSprintsByUserId(
+            @org.springframework.data.repository.query.Param("userId") Long userId);
+
+    java.util.List<TeamRegisterSprint> findAllByTeamId(String teamId);
 }

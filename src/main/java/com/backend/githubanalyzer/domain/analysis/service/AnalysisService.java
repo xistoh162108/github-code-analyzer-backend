@@ -24,10 +24,13 @@ public class AnalysisService {
     private final ObjectMapper objectMapper;
     private final org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
     private final ScoreAggregationService scoreAggregationService;
+    private final com.backend.githubanalyzer.global.monitor.MetricsService metricsService;
 
     private static final String SCORE_STATS_KEY_PREFIX = "analysis:stats:";
 
     private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
+
+    private final com.backend.githubanalyzer.domain.notification.service.NotificationService notificationService;
 
     // Helper record to hold prompts
     private record AnalysisPrompts(String system, String user) {
@@ -39,14 +42,23 @@ public class AnalysisService {
         try {
             // Step 1: Prepare (Set Status PROCESSING, Build Prompts) - Short Transaction
             AnalysisPrompts prompts = transactionTemplate.execute(status -> {
-                Commit commit = commitRepository.findById_CommitShaAndRepositoryId(commitSha, repositoryId)
-                        .orElseThrow(() -> new IllegalArgumentException("Commit not found: " + commitSha));
+                java.util.List<Commit> commits = commitRepository.findAllById_CommitShaAndRepositoryId(commitSha,
+                        repositoryId);
+                if (commits.isEmpty()) {
+                    throw new IllegalArgumentException("Commit not found: " + commitSha);
+                }
 
-                commit.setAnalysisStatus(AnalysisStatus.PROCESSING);
-                commitRepository.saveAndFlush(commit); // Commit status change immediately
+                // Mark ALL as processing
+                for (Commit commit : commits) {
+                    commit.setAnalysisStatus(AnalysisStatus.PROCESSING);
+                }
+                commitRepository.saveAll(commits);
+                commitRepository.flush();
 
+                // Use the first one for context (content is same)
+                Commit primaryCommit = commits.get(0);
                 String systemPrompt = constructSystemPrompt();
-                String userPrompt = constructUserPrompt(commit);
+                String userPrompt = constructUserPrompt(primaryCommit);
                 return new AnalysisPrompts(systemPrompt, userPrompt);
             });
 
@@ -54,14 +66,21 @@ public class AnalysisService {
                 throw new IllegalStateException("Failed to prepare analysis prompts");
 
             // Step 2: AI Call (No Transaction, Long running)
-            // Block here is safe because we are not holding a DB connection
+            metricsService.incrementExternalRequest("openai");
             OpenAiAnalysisResponse response = openAiClient.analyzeCommit(prompts.system(), prompts.user()).block();
 
             // Step 3: Save Results - Short Transaction
             transactionTemplate.execute(status -> {
-                Commit commit = commitRepository.findById_CommitShaAndRepositoryId(commitSha, repositoryId)
-                        .orElseThrow(() -> new IllegalArgumentException("Commit not found during save: " + commitSha));
-                updateCommitWithAnalysis(commit, response);
+                java.util.List<Commit> commits = commitRepository.findAllById_CommitShaAndRepositoryId(commitSha,
+                        repositoryId);
+                if (commits.isEmpty()) {
+                    throw new IllegalArgumentException("Commit not found during save: " + commitSha);
+                }
+
+                // Update ALL copies of this commit (different branches)
+                for (Commit commit : commits) {
+                    updateCommitWithAnalysis(commit, response);
+                }
                 return null;
             });
 
@@ -70,8 +89,13 @@ public class AnalysisService {
             // Step 4: Handle Error - Short Transaction
             try {
                 transactionTemplate.execute(status -> {
-                    commitRepository.findById_CommitShaAndRepositoryId(commitSha, repositoryId)
-                            .ifPresent(commit -> handleAnalysisError(commit, e));
+                    java.util.List<Commit> commits = commitRepository.findAllById_CommitShaAndRepositoryId(commitSha,
+                            repositoryId);
+                    if (!commits.isEmpty()) {
+                        for (Commit commit : commits) {
+                            handleAnalysisError(commit, e);
+                        }
+                    }
                     return null;
                 });
             } catch (Exception ex) {
@@ -79,6 +103,8 @@ public class AnalysisService {
             }
         }
     }
+
+    // ... (rest of methods unchanged)
 
     private void updateCommitWithAnalysis(Commit commit, OpenAiAnalysisResponse response) {
         log.info("Analysis completed for commit: {}", commit.getId().getCommitSha());
@@ -134,17 +160,32 @@ public class AnalysisService {
         scoreAggregationService.markRepoDirty(commit.getRepository().getId());
         scoreAggregationService.markUserDirty(commit.getAuthor().getId());
         scoreAggregationService.markTeamDirty(commit.getRepository().getId());
+
+        // Notify User
+        try {
+            notificationService.send(commit.getAuthor().getId(),
+                    com.backend.githubanalyzer.domain.notification.entity.NotificationType.ANALYSIS_COMPLETED,
+                    "Commit Analysis Completed: " + commit.getMessage());
+        } catch (Exception e) {
+            log.error("Failed to send notification for commit {}", commit.getId().getCommitSha());
+        }
     }
 
     private void handleAnalysisError(Commit commit, Throwable error) {
-        // ... (as before)
-        log.error("!!! ANALYSIS FAILED for commit: {} !!!", commit.getId().getCommitSha());
-        log.error("Reason: {}", error.getMessage());
-        log.error("Stack Trace:", error);
+        // ... (existing logs) ...
 
         commit.setAnalysisStatus(AnalysisStatus.FAILED);
         commit.setAnalysisReason(error.getMessage());
         commitRepository.save(commit);
+
+        // Notify User
+        try {
+            notificationService.send(commit.getAuthor().getId(),
+                    com.backend.githubanalyzer.domain.notification.entity.NotificationType.ANALYSIS_FAILED,
+                    "Commit Analysis Failed: " + commit.getMessage());
+        } catch (Exception e) {
+            log.error("Failed to send failure notification for commit {}", commit.getId().getCommitSha());
+        }
     }
 
     private String constructSystemPrompt() {
@@ -186,13 +227,15 @@ public class AnalysisService {
             String[] parents = commit.getBeforeCommitId().split(",");
             userPrompt.append("### PREVIOUS COMMIT(S) CONTEXT\n");
             for (String parentSha : parents) {
-                commitRepository.findById_CommitShaAndRepositoryId(parentSha, commit.getRepository().getId())
-                        .ifPresent(parent -> {
-                            userPrompt.append("- SHA: ").append(parentSha).append("\n");
-                            userPrompt.append("  Message: ").append(parent.getMessage()).append("\n");
-                            userPrompt.append("  Changed Files: ").append(extractFilesFromDiff(parent.getDiff()))
-                                    .append("\n");
-                        });
+                java.util.List<Commit> parentCommits = commitRepository.findAllById_CommitShaAndRepositoryId(parentSha,
+                        commit.getRepository().getId());
+                if (!parentCommits.isEmpty()) {
+                    Commit parent = parentCommits.get(0);
+                    userPrompt.append("- SHA: ").append(parentSha).append("\n");
+                    userPrompt.append("  Message: ").append(parent.getMessage()).append("\n");
+                    userPrompt.append("  Changed Files: ").append(extractFilesFromDiff(parent.getDiff()))
+                            .append("\n");
+                }
             }
             userPrompt.append("\n");
         }

@@ -51,14 +51,16 @@ public class CommitService {
 
     @Transactional(readOnly = true)
     public CommitAnalysisResponse getAnalysis(String repoId, String sha) {
-        return commitRepository.findById_CommitShaAndRepositoryId(sha, repoId)
+        return commitRepository.findAllById_CommitShaAndRepositoryId(sha, repoId).stream()
+                .findFirst()
                 .map(this::toAnalysisResponse)
                 .orElse(null);
     }
 
     @Transactional(readOnly = true)
     public AnalysisStatus getStatus(String repoId, String sha) {
-        return commitRepository.findById_CommitShaAndRepositoryId(sha, repoId)
+        return commitRepository.findAllById_CommitShaAndRepositoryId(sha, repoId).stream()
+                .findFirst()
                 .map(Commit::getAnalysisStatus)
                 .orElse(null);
     }

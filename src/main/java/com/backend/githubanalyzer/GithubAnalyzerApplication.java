@@ -27,10 +27,13 @@ public class GithubAnalyzerApplication {
     @Bean(name = "analysisTaskExecutor")
     public org.springframework.core.task.TaskExecutor analysisTaskExecutor() {
         org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor executor = new org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(10); // 10 parallel threads
-        executor.setMaxPoolSize(20);
-        executor.setQueueCapacity(500);
+        executor.setCorePoolSize(20); // Increased from 10
+        executor.setMaxPoolSize(50); // Increased from 20 to handle bursts
+        executor.setQueueCapacity(3000); // Increased from 500 to support large repo syncs
         executor.setThreadNamePrefix("AnalysisWorker-");
+        // Prevent data loss by running in caller thread if queue is full (throttles
+        // Redis consumer)
+        executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
         executor.initialize();
         return executor;
     }

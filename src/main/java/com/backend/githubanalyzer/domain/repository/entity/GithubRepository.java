@@ -74,4 +74,7 @@ public class GithubRepository {
     private String branchesEtag;
 
     private String commitsEtag;
+
+    @Column(columnDefinition = "TEXT")
+    private String languages; // JSON: {"Java": 12000, "HTML": 3000}
 }

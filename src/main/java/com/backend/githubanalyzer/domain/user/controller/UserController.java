@@ -13,6 +13,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
+@io.swagger.v3.oas.annotations.tags.Tag(name = "User & Dashboard", description = "유저 프로필 및 개인 대시보드 API")
 public class UserController {
 
     private final UserService userService;
@@ -24,12 +25,14 @@ public class UserController {
         this.commitService = commitService;
     }
 
+    @io.swagger.v3.oas.annotations.Operation(summary = "Get My Profile (내 정보 조회)", description = "로그인한 유저의 상세 정보를 조회합니다.")
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<UserResponse>> me() {
         String email = JwtUtil.getCurrentUsername();
         return ResponseEntity.ok(ApiResponse.success(userService.getMe(email)));
     }
 
+    @io.swagger.v3.oas.annotations.Operation(summary = "Update My Profile (내 정보 수정)", description = "로그인한 유저의 프로필 정보를 수정합니다.")
     @PutMapping("/me")
     public ResponseEntity<ApiResponse<UserResponse>> updateMe(
             @RequestBody com.backend.githubanalyzer.domain.user.dto.UserUpdateRequest request) {
@@ -37,6 +40,7 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success("프로필이 수정되었습니다.", userService.updateMe(email, request)));
     }
 
+    @io.swagger.v3.oas.annotations.Operation(summary = "Withdraw (회원 탈퇴)", description = "회원 탈퇴를 진행합니다.")
     @DeleteMapping("/me")
     public ResponseEntity<ApiResponse<Void>> withdraw() {
         String email = JwtUtil.getCurrentUsername();
@@ -44,24 +48,28 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success("회원 탈퇴가 완료되었습니다.", null));
     }
 
+    @io.swagger.v3.oas.annotations.Operation(summary = "My Heatmap (내 커밋 히트맵)", description = "로그인한 유저의 커밋 히트맵 데이터를 조회합니다.")
     @GetMapping("/me/activities/heatmap")
     public ResponseEntity<ApiResponse<List<CommitHeatmapResponse>>> heatmap() {
         String email = JwtUtil.getCurrentUsername();
         return ResponseEntity.ok(ApiResponse.success(userService.getUserHeatmap(email)));
     }
 
+    @io.swagger.v3.oas.annotations.Operation(summary = "My Repositories (내 레포지토리 목록)", description = "로그인한 유저의 연동된 레포지토리 목록을 조회합니다.")
     @GetMapping("/me/repositories")
     public ResponseEntity<ApiResponse<List<GithubRepositoryResponse>>> repositories() {
         String email = JwtUtil.getCurrentUsername();
         return ResponseEntity.ok(ApiResponse.success(userService.getUserRepositories(email)));
     }
 
+    @io.swagger.v3.oas.annotations.Operation(summary = "My Recent Commits (내 최근 커밋)", description = "로그인한 유저의 최근 커밋 내역을 조회합니다.")
     @GetMapping("/me/commits/recent")
     public ResponseEntity<ApiResponse<List<com.backend.githubanalyzer.domain.commit.dto.CommitResponse>>> recentCommits() {
         String email = JwtUtil.getCurrentUsername();
         return ResponseEntity.ok(ApiResponse.success(commitService.getUserRecentCommits(email)));
     }
 
+    @io.swagger.v3.oas.annotations.Operation(summary = "User Repo Commits (특정 유저/레포 커밋 조회)", description = "특정 유저와 레포지토리의 커밋 목록을 조회합니다.")
     @GetMapping("/{userId}/repositories/{repoId}/commits")
     public ResponseEntity<ApiResponse<List<com.backend.githubanalyzer.domain.commit.dto.CommitResponse>>> userRepoCommits(
             @PathVariable Long userId,

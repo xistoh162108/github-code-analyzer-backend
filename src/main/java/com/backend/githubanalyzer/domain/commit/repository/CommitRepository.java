@@ -14,13 +14,15 @@ public interface CommitRepository extends JpaRepository<Commit, CommitId> {
 
         List<Commit> findAllByAuthorId(Long authorId);
 
+        long countByAnalysisStatus(com.backend.githubanalyzer.domain.commit.entity.AnalysisStatus analysisStatus);
+
         List<Commit> findAllByAuthorIdOrderByCommittedAtDesc(Long authorId);
 
         List<Commit> findAllByAuthorIdAndRepositoryIdOrderByCommittedAtDesc(Long authorId, String repoId);
 
         java.util.List<Commit> findAllById_CommitSha(String commitSha);
 
-        java.util.Optional<Commit> findById_CommitShaAndRepositoryId(String commitSha, String repoId);
+        java.util.List<Commit> findAllById_CommitShaAndRepositoryId(String commitSha, String repoId);
 
         List<Commit> findAllByRepositoryIdAndId_BranchName(String repoId, String branchName);
 
@@ -93,4 +95,71 @@ public interface CommitRepository extends JpaRepository<Commit, CommitId> {
                         @Param("authorId") Long authorId,
                         @Param("start") java.time.LocalDateTime start,
                         @Param("end") java.time.LocalDateTime end);
+
+        @Query("SELECT SUM(c.totalScore) FROM Commit c WHERE c.repository.id = :repoId AND c.committedAt BETWEEN :start AND :end")
+        Long sumTotalScoreByRepo(@Param("repoId") String repoId,
+                        @Param("start") java.time.LocalDateTime start,
+                        @Param("end") java.time.LocalDateTime end);
+
+        @Query("SELECT DISTINCT c.committedAt FROM Commit c WHERE c.author.id = :authorId ORDER BY c.committedAt DESC")
+        java.util.List<java.time.LocalDateTime> findDistinctCommittedAtByAuthorId(@Param("authorId") Long authorId);
+
+        boolean existsByAuthorIdAndRepositoryIdIn(Long authorId, java.util.List<String> repositoryIds);
+
+        // --- Ranking Queries ---
+
+        // 1. Top Commits Global
+        @Query("SELECT c FROM Commit c WHERE c.committedAt BETWEEN :start AND :end AND c.analysisStatus = 'COMPLETED' ORDER BY c.totalScore DESC")
+        List<Commit> findTopCommitsGlobal(@Param("start") java.time.LocalDateTime start,
+                        @Param("end") java.time.LocalDateTime end,
+                        org.springframework.data.domain.Pageable pageable);
+
+        // 2. Top Commits by Repos (Team/Sprint)
+        @Query("SELECT c FROM Commit c WHERE c.repository.id IN :repoIds AND c.committedAt BETWEEN :start AND :end AND c.analysisStatus = 'COMPLETED' ORDER BY c.totalScore DESC")
+        List<Commit> findTopCommitsByRepos(@Param("repoIds") List<String> repoIds,
+                        @Param("start") java.time.LocalDateTime start,
+                        @Param("end") java.time.LocalDateTime end,
+                        org.springframework.data.domain.Pageable pageable);
+
+        // 3. Top Commits by User
+        @Query("SELECT c FROM Commit c WHERE c.author.id = :userId AND c.committedAt BETWEEN :start AND :end AND c.analysisStatus = 'COMPLETED' ORDER BY c.totalScore DESC")
+        List<Commit> findTopCommitsByUser(@Param("userId") Long userId,
+                        @Param("start") java.time.LocalDateTime start,
+                        @Param("end") java.time.LocalDateTime end,
+                        org.springframework.data.domain.Pageable pageable);
+
+        // 4. User Ranking Global (Aggregated Score)
+        @Query("SELECT c.author as user, SUM(c.totalScore) as totalScore FROM Commit c " +
+                        "WHERE c.committedAt BETWEEN :start AND :end AND c.analysisStatus = 'COMPLETED' " +
+                        "GROUP BY c.author ORDER BY SUM(c.totalScore) DESC")
+        List<Object[]> findUserRankingGlobal(@Param("start") java.time.LocalDateTime start,
+                        @Param("end") java.time.LocalDateTime end,
+                        org.springframework.data.domain.Pageable pageable);
+
+        // 5. User Ranking by Repos (For Team/Sprint)
+        @Query("SELECT c.author as user, SUM(c.totalScore) as totalScore FROM Commit c " +
+                        "WHERE c.repository.id IN :repoIds AND c.committedAt BETWEEN :start AND :end AND c.analysisStatus = 'COMPLETED' "
+                        +
+                        "GROUP BY c.author ORDER BY SUM(c.totalScore) DESC")
+        List<Object[]> findUserRankingByRepos(@Param("repoIds") List<String> repoIds,
+                        @Param("start") java.time.LocalDateTime start,
+                        @Param("end") java.time.LocalDateTime end,
+                        org.springframework.data.domain.Pageable pageable);
+
+        // 6. Top Commits by Authors (Team Scope)
+        @Query("SELECT c FROM Commit c WHERE c.author.id IN :authorIds AND c.committedAt BETWEEN :start AND :end AND c.analysisStatus = 'COMPLETED' ORDER BY c.totalScore DESC")
+        List<Commit> findTopCommitsByAuthors(@Param("authorIds") List<Long> authorIds,
+                        @Param("start") java.time.LocalDateTime start,
+                        @Param("end") java.time.LocalDateTime end,
+                        org.springframework.data.domain.Pageable pageable);
+
+        // 7. User Ranking by Authors (Team Scope)
+        @Query("SELECT c.author as user, SUM(c.totalScore) as totalScore FROM Commit c " +
+                        "WHERE c.author.id IN :authorIds AND c.committedAt BETWEEN :start AND :end AND c.analysisStatus = 'COMPLETED' "
+                        +
+                        "GROUP BY c.author ORDER BY SUM(c.totalScore) DESC")
+        List<Object[]> findUserRankingByAuthors(@Param("authorIds") List<Long> authorIds,
+                        @Param("start") java.time.LocalDateTime start,
+                        @Param("end") java.time.LocalDateTime end,
+                        org.springframework.data.domain.Pageable pageable);
 }
