@@ -30,8 +30,8 @@ spring:
       client:
         registration:
           github:
-            client-id: Iv23lickmaPy9lxTmt04
-            client-secret: d93c3d36b7f3413f9a690fcd15127a22663d0691
+            client-id: ${GITHUB_CLIENT_ID:Iv23lickmaPy9lxTmt04}
+            client-secret: ${GITHUB_CLIENT_SECRET:d93c3d36b7f3413f9a690fcd15127a22663d0691}
             scope:
               - read:user
               - user:email
