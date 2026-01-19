@@ -1,17 +1,19 @@
 package com.backend.githubanalyzer.domain.sync.service;
 
+import com.backend.githubanalyzer.domain.contribution.entity.ContributionType;
 import com.backend.githubanalyzer.domain.repository.entity.GithubRepository;
 import com.backend.githubanalyzer.domain.user.entity.User;
 import com.backend.githubanalyzer.infra.github.GithubApiService;
+import com.backend.githubanalyzer.infra.github.GithubApiService.GithubResponse;
 import com.backend.githubanalyzer.infra.github.dto.GithubBranchResponse;
 import com.backend.githubanalyzer.infra.github.dto.GithubCommitResponse;
 import com.backend.githubanalyzer.infra.github.dto.GithubRepoResponse;
-import com.backend.githubanalyzer.infra.github.GithubApiService.GithubResponse;
+import com.backend.githubanalyzer.infra.github.service.GithubAppService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import com.backend.githubanalyzer.domain.contribution.entity.ContributionType;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -23,7 +25,8 @@ public class GithubSyncService {
     private final GithubApiService githubApiService;
     private final GithubPersistenceService githubPersistenceService;
     private final com.backend.githubanalyzer.domain.user.service.UserService userService;
-    private final com.backend.githubanalyzer.infra.github.service.GithubAppService githubAppService;
+    private final GithubAppService githubAppService;
+    private final com.backend.githubanalyzer.domain.team.service.TeamService teamService;
 
     public User findUserByGithubId(String githubId) {
         return userService.findByGithubId(githubId);
@@ -175,6 +178,16 @@ public class GithubSyncService {
             repository.setSyncStatus("COMPLETED");
             repository.setLastSyncAt(LocalDateTime.now());
             githubPersistenceService.refreshRepoStats(repository);
+
+            // Team Service Integration (From dev branch)
+            com.backend.githubanalyzer.domain.team.dto.TeamCreateRequest teamRequest = new com.backend.githubanalyzer.domain.team.dto.TeamCreateRequest(
+                    repository.getReponame(),
+                    repository.getDescription(),
+                    user.getId() // 또는 repository.getOwner().getId()
+            );
+
+            String teamId = teamService.createTeam(teamRequest);
+            teamService.addRepoToTeam(teamId, repository);
         } catch (Exception e) {
             log.error("Single repo sync failed: {}", e.getMessage());
         }
