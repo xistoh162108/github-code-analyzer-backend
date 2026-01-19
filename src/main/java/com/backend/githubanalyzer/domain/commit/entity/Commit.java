@@ -10,7 +10,11 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "commits")
+@Table(name = "commits", indexes = {
+        @Index(name = "idx_commit_repo_status", columnList = "repo_id, analysis_status"),
+        @Index(name = "idx_commit_author_status", columnList = "author_id, analysis_status"),
+        @Index(name = "idx_commit_repo_time_status", columnList = "repo_id, committed_at, analysis_status")
+})
 @Getter
 @Setter
 @Builder
@@ -63,39 +67,39 @@ public class Commit {
     @Column(name = "risk_level")
     private RiskLevel riskLevel;
 
-    @Column(name = "commit_message_quality", nullable = false, columnDefinition = "BIGINT DEFAULT 0 CHECK (commit_message_quality BETWEEN 0 AND 10)")
+    @Column(name = "commit_message_quality", nullable = false, columnDefinition = "BIGINT DEFAULT 0 CHECK (commit_message_quality BETWEEN 0 AND 100)")
     @Min(0)
-    @Max(10)
+    @Max(100)
     @Builder.Default
     private Long commitMessageQuality = 0L;
 
-    @Column(name = "code_quality", nullable = false, columnDefinition = "BIGINT DEFAULT 0 CHECK (code_quality BETWEEN 0 AND 10)")
+    @Column(name = "code_quality", nullable = false, columnDefinition = "BIGINT DEFAULT 0 CHECK (code_quality BETWEEN 0 AND 100)")
     @Min(0)
-    @Max(10)
+    @Max(100)
     @Builder.Default
     private Long codeQuality = 0L;
 
-    @Column(name = "change_appropriateness", nullable = false, columnDefinition = "BIGINT DEFAULT 0 CHECK (change_appropriateness BETWEEN 0 AND 10)")
+    @Column(name = "change_appropriateness", nullable = false, columnDefinition = "BIGINT DEFAULT 0 CHECK (change_appropriateness BETWEEN 0 AND 100)")
     @Min(0)
-    @Max(10)
+    @Max(100)
     @Builder.Default
     private Long changeAppropriateness = 0L;
 
-    @Column(name = "necessity", nullable = false, columnDefinition = "BIGINT DEFAULT 0 CHECK (necessity BETWEEN 0 AND 10)")
+    @Column(name = "necessity", nullable = false, columnDefinition = "BIGINT DEFAULT 0 CHECK (necessity BETWEEN 0 AND 100)")
     @Min(0)
-    @Max(10)
+    @Max(100)
     @Builder.Default
     private Long necessity = 0L;
 
-    @Column(name = "correctness_and_risk", nullable = false, columnDefinition = "BIGINT DEFAULT 0 CHECK (correctness_and_risk BETWEEN 0 AND 10)")
+    @Column(name = "correctness_and_risk", nullable = false, columnDefinition = "BIGINT DEFAULT 0 CHECK (correctness_and_risk BETWEEN 0 AND 100)")
     @Min(0)
-    @Max(10)
+    @Max(100)
     @Builder.Default
     private Long correctnessAndRisk = 0L;
 
-    @Column(name = "testing_and_verification", nullable = false, columnDefinition = "BIGINT DEFAULT 0 CHECK (testing_and_verification BETWEEN 0 AND 10)")
+    @Column(name = "testing_and_verification", nullable = false, columnDefinition = "BIGINT DEFAULT 0 CHECK (testing_and_verification BETWEEN 0 AND 100)")
     @Min(0)
-    @Max(10)
+    @Max(100)
     @Builder.Default
     private Long testingAndVerification = 0L;
 
@@ -146,7 +150,7 @@ public class Commit {
                 (changeAppropriateness != null ? changeAppropriateness : 0L) * 20 +
                 (necessity != null ? necessity : 0L) * 15 +
                 (correctnessAndRisk != null ? correctnessAndRisk : 0L) * 15 +
-                (testingAndVerification != null ? testingAndVerification : 0L) * 10) / 10;
+                (testingAndVerification != null ? testingAndVerification : 0L) * 10) / 100;
 
         // Clamp total score to 0-100 just in case
         this.totalScore = Math.max(0, Math.min(100, this.totalScore));

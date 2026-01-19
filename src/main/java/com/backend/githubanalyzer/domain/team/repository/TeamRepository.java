@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface TeamRepository extends JpaRepository<Team, String> {
+    java.util.List<Team> findAllByNameContainingIgnoreCase(String name);
 }

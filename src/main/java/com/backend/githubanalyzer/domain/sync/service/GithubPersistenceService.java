@@ -1,5 +1,9 @@
 package com.backend.githubanalyzer.domain.sync.service;
 
+import com.backend.githubanalyzer.domain.repository.dto.ContributorResponse;
+import com.backend.githubanalyzer.domain.repository.dto.GithubRepositoryResponse;
+import com.backend.githubanalyzer.domain.repository.dto.RepositoryMetricResponse;
+import com.backend.githubanalyzer.domain.commit.entity.AnalysisStatus;
 import com.backend.githubanalyzer.domain.commit.entity.Commit;
 import com.backend.githubanalyzer.domain.commit.entity.CommitId;
 import com.backend.githubanalyzer.domain.commit.repository.CommitRepository;
@@ -12,16 +16,18 @@ import com.backend.githubanalyzer.domain.repository.repository.GithubRepositoryR
 import com.backend.githubanalyzer.domain.user.entity.User;
 import com.backend.githubanalyzer.domain.user.service.UserService;
 import com.backend.githubanalyzer.domain.team.service.TeamService;
-import com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint;
-import com.backend.githubanalyzer.domain.team.repository.TeamRegisterSprintRepository;
-import com.backend.githubanalyzer.domain.team.service.SprintRegistrationService;
 import com.backend.githubanalyzer.infra.github.dto.GithubCommitResponse;
 import com.backend.githubanalyzer.infra.github.dto.GithubRepoResponse;
-import com.backend.githubanalyzer.domain.analysis.service.AnalysisService;
+import com.backend.githubanalyzer.domain.analysis.dto.AnalysisJobRequest;
+import com.backend.githubanalyzer.domain.analysis.queue.AnalysisQueueProducer;
+import com.backend.githubanalyzer.domain.analysis.service.ScoreAggregationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -33,13 +39,59 @@ public class GithubPersistenceService {
     private final ContributionRepository contributionRepository;
     private final UserService userService;
     private final TeamService teamService;
-    private final TeamRegisterSprintRepository teamRegisterSprintRepository;
-    private final SprintRegistrationService sprintRegistrationService;
-    private final AnalysisService analysisService;
+    private final AnalysisQueueProducer analysisQueueProducer;
+    private final ScoreAggregationService scoreAggregationService;
 
     @Transactional(readOnly = true)
     public GithubRepository findById(String id) {
         return repositoryRepository.findById(id).orElse(null);
+    }
+
+    @Transactional(readOnly = true)
+    public GithubRepositoryResponse getRepositoryResponse(String id) {
+        return repositoryRepository.findById(id)
+                .map(this::toDto)
+                .orElse(null);
+    }
+
+    private GithubRepositoryResponse toDto(GithubRepository repository) {
+        return GithubRepositoryResponse.builder()
+                .id(repository.getId())
+                .reponame(repository.getReponame())
+                .repoUrl(repository.getRepoUrl())
+                .description(repository.getDescription())
+                .language(repository.getLanguage())
+                .size(repository.getSize())
+                .stars(repository.getStars())
+                .createdAt(repository.getCreatedAt())
+                .updatedAt(repository.getUpdatedAt())
+                .pushedAt(repository.getPushedAt())
+                .lastSyncAt(repository.getLastSyncAt())
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public RepositoryMetricResponse getRepositoryMetrics(String repoId) {
+        return repositoryRepository.findById(repoId)
+                .map(repo -> RepositoryMetricResponse.builder()
+                        .commitCount(repo.getCommitCount())
+                        .averageScore(repo.getScore())
+                        .build())
+                .orElse(null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ContributorResponse> getContributors(String repoId) {
+        List<Contribution> contributions = contributionRepository.findAllByRepositoryIdOrderByRankAsc(repoId);
+        return contributions.stream()
+                .map(c -> ContributorResponse.builder()
+                        .username(c.getUser().getUsername())
+                        .profileUrl(c.getUser().getProfileUrl())
+                        .role(c.getContributionType().name())
+                        .rank(c.getRank())
+                        .score(c.getUser().getScore())
+                        .build())
+                .collect(Collectors.toList());
     }
 
     @Transactional
@@ -110,29 +162,59 @@ public class GithubPersistenceService {
         }
 
         if (existingCommit == null) {
+            String parentsStr = null;
+            if (detailedDto.getParents() != null && !detailedDto.getParents().isEmpty()) {
+                parentsStr = String.join(",", detailedDto.getParents().stream()
+                        .map(GithubCommitResponse.ParentInfo::getSha)
+                        .toList());
+            }
+
             Commit commit = Commit.builder()
                     .id(commitId)
                     .repository(repository)
                     .author(author)
                     .message(detailedDto.getCommit().getMessage())
                     .diff(diffBuilder.toString())
+                    .beforeCommitId(parentsStr) // Populate beforeCommitId
                     .committedAt(detailedDto.getCommit().getAuthor().getDate())
                     .build();
             commitRepository.save(commit);
-            analysisService.analyzeCommitAsync(commit);
+
+            // Push to AI Analysis Queue
+            analysisQueueProducer.pushJob(AnalysisJobRequest.builder()
+                    .commitSha(commit.getId().getCommitSha())
+                    .repositoryId(repository.getId())
+                    .build());
         } else {
             existingCommit.setDiff(diffBuilder.toString());
             existingCommit.setAuthor(author);
+            // Update parents if needed (usually SHA is immutable, but for completeness)
+            if (detailedDto.getParents() != null && !detailedDto.getParents().isEmpty()) {
+                String parentsStr = String.join(",", detailedDto.getParents().stream()
+                        .map(GithubCommitResponse.ParentInfo::getSha)
+                        .toList());
+                existingCommit.setBeforeCommitId(parentsStr);
+            }
+
+            // Re-trigger analysis if score is 0 AND summary is missing (implies incomplete
+            // analysis)
+            // OR if status is FAILED (Retry logic)
+            if ((existingCommit.getTotalScore() == 0L && existingCommit.getSummary() == null)
+                    || existingCommit.getAnalysisStatus() == AnalysisStatus.FAILED) {
+                log.info("Re-queueing existing commit {} for analysis (Missing Analysis Data)",
+                        existingCommit.getId().getCommitSha());
+                analysisQueueProducer.pushJob(AnalysisJobRequest.builder()
+                        .commitSha(existingCommit.getId().getCommitSha())
+                        .repositoryId(repository.getId())
+                        .build());
+            }
+
             commitRepository.save(existingCommit);
         }
-        userService.refreshUserStats(author);
 
-        // Refresh Participation Stats for all sprints involving this repo
-        java.util.List<TeamRegisterSprint> registrations = teamRegisterSprintRepository
-                .findByRepositoryId(repository.getId());
-        for (TeamRegisterSprint reg : registrations) {
-            sprintRegistrationService.refreshTeamSprintStats(reg);
-        }
+        // Lazy Aggregation (Performance Boost)
+        scoreAggregationService.markUserDirty(author.getId());
+        scoreAggregationService.markTeamDirty(repository.getId());
 
         saveContribution(author, repository, ContributionType.COMMITTER);
     }
@@ -152,5 +234,20 @@ public class GithubPersistenceService {
         repositoryRepository.save(repository);
         log.info("Refreshed stats for repo {}: {} branches, {} commits, score: {}",
                 repository.getReponame(), branchCount, commitCount, score);
+    }
+
+    @Transactional
+    public void deleteRepository(String repositoryId) {
+        GithubRepository repo = repositoryRepository.findById(repositoryId).orElse(null);
+        if (repo != null) {
+            log.info("Deleting repository: {}/{}", repo.getOwner().getUsername(), repo.getReponame());
+            // Due to cascade or manual cleanup
+            repositoryRepository.delete(repo);
+        }
+    }
+
+    @Transactional
+    public GithubRepository save(GithubRepository repository) {
+        return repositoryRepository.save(repository);
     }
 }

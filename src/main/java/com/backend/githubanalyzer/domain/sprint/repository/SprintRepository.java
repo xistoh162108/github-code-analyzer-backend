@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface SprintRepository extends JpaRepository<Sprint, String> {
     List<Sprint> findByIsPrivateFalse();
+
+    List<Sprint> findAllByNameContainingIgnoreCase(String name);
 }

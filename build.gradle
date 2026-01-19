@@ -45,6 +45,13 @@ dependencies {
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
+    
+    // Bouncy Castle for robust PEM key parsing (PKCS#1, PKCS#8 support)
+    implementation 'org.bouncycastle:bcpkix-jdk18on:1.78.1'
+
+    // .env file support
+    implementation 'me.paulschwarz:spring-dotenv:4.0.0'
+    implementation 'io.github.cdimascio:java-dotenv:5.2.2'
 }
 
 tasks.named('test') {

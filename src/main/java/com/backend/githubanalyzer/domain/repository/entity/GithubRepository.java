@@ -3,6 +3,7 @@ package com.backend.githubanalyzer.domain.repository.entity;
 import com.backend.githubanalyzer.domain.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -41,6 +42,7 @@ public class GithubRepository {
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
+    @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 

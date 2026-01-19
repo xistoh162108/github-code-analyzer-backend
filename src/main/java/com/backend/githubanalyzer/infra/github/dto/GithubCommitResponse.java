@@ -14,6 +14,16 @@ public class GithubCommitResponse {
     private CommitDetail commit;
     private GithubUser author;
     private List<GithubFileResponse> files;
+    private List<ParentInfo> parents;
+
+    @Getter
+    @NoArgsConstructor
+    public static class ParentInfo {
+        private String sha;
+        private String url;
+        @JsonProperty("html_url")
+        private String htmlUrl;
+    }
 
     @Getter
     @NoArgsConstructor

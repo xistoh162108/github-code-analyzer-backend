@@ -57,7 +57,13 @@ public class SecurityConfig {
 
         http.authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/test/success").permitAll()
+                .requestMatchers("/api/auth/refresh").permitAll()
                 .requestMatchers("/api/webhooks/**").permitAll()
+                .requestMatchers("/api/search/**").permitAll()
+                .requestMatchers("/api/rankings/**").permitAll()
+                .requestMatchers("/api/sprints/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/repos/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/teams/**").permitAll()
                 .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/error").permitAll()
                 .anyRequest().authenticated());

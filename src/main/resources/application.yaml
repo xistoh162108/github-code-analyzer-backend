@@ -4,6 +4,12 @@ spring:
     username: springuser
     password: springpassword
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 30
+      connection-timeout: 30000
+      minimum-idle: 10
+      idle-timeout: 600000
+      max-lifetime: 1800000
 
   jpa:
     hibernate:
@@ -48,9 +54,17 @@ openai:
 logging:
   level:
     org:
-      springframework: debug
+      springframework: info
       springframework.security: debug
+      springframework.data.redis: info
       zerock: debug
       hibernate:
         SQL: debug
+
+github:
+  app:
+    id: ${GITHUB_APP_ID:}
+    private-key-path: ${GITHUB_APP_PRIVATE_KEY_PATH:/Users/bagjimin/Downloads/madcamp-week2-demo.2026-01-18.private-key.pem}
+  webhook:
+    secret: ${GITHUB_WEBHOOK_SECRET:}
 

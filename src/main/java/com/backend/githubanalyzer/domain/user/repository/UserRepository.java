@@ -13,6 +13,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByGithubId(String githubId);
 
+    List<User> findAllByUsernameContainingIgnoreCase(String username);
+
     // 1. Batch Notification Finders
     List<User> findAllByNotifyWeeklyTrue();
 

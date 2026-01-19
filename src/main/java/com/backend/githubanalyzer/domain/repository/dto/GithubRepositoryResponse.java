@@ -20,4 +20,5 @@ public class GithubRepositoryResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime pushedAt;
+    private LocalDateTime lastSyncAt;
 }

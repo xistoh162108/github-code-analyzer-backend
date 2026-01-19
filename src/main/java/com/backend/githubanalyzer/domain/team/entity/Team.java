@@ -32,6 +32,10 @@ public class Team {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "is_public", nullable = false)
+    @Builder.Default
+    private Boolean isPublic = true;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

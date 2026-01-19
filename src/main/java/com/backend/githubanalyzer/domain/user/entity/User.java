@@ -58,6 +58,8 @@ public class User {
     @Builder.Default
     private Long score = 0L;
 
+    private String installationId;
+
     private LocalDateTime createdAt;
 
     @PrePersist

@@ -3,11 +3,13 @@ package com.backend.githubanalyzer.security.oauth;
 import com.backend.githubanalyzer.domain.sync.service.GithubSyncService;
 import com.backend.githubanalyzer.domain.user.entity.User;
 import com.backend.githubanalyzer.domain.user.service.UserService;
+import com.backend.githubanalyzer.infra.github.service.GithubAppService;
 import com.backend.githubanalyzer.security.dto.JwtToken;
 import com.backend.githubanalyzer.security.jwt.JwtTokenProvider;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -22,6 +24,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
@@ -29,6 +32,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
     private final GithubSyncService githubSyncService;
+    private final GithubAppService githubAppService;
     private final OAuth2AuthorizedClientService authorizedClientService;
 
     @Override
@@ -50,6 +54,16 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         // Use Transactional service for syncing profile
         User user = userService.syncUserFromGithub(githubId, username, email, avatarUrl, location, company,
                 publicRepos);
+
+        // Proactive Installation Association
+        if (user.getInstallationId() == null) {
+            String installationId = githubAppService.getInstallationIdByUser(username);
+            if (installationId != null) {
+                user.setInstallationId(installationId);
+                userService.save(user);
+                log.info("Proactively associated installation ID {} with user {}", installationId, username);
+            }
+        }
 
         // Fetch GitHub Access Token for synchronization
         OAuth2AuthenticationToken oauthToken = (OAuth2AuthenticationToken) authentication;

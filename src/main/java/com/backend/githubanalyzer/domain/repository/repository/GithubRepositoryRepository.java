@@ -13,4 +13,6 @@ public interface GithubRepositoryRepository extends JpaRepository<GithubReposito
     boolean existsByRepoUrl(String repoUrl);
 
     List<GithubRepository> findAllByOwnerId(Long ownerId);
+
+    List<GithubRepository> findAllByReponameContainingIgnoreCase(String reponame);
 }

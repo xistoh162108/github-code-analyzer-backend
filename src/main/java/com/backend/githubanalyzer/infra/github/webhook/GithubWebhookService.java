@@ -1,6 +1,6 @@
 package com.backend.githubanalyzer.infra.github.webhook;
 
-import com.backend.githubanalyzer.domain.sync.service.GithubSyncService;
+import com.backend.githubanalyzer.domain.sync.dto.SyncJobRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -12,83 +12,99 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class GithubWebhookService {
 
-    private final GithubSyncService githubSyncService;
+    private final com.backend.githubanalyzer.infra.redis.SyncQueueProducer syncQueueProducer;
     private final ObjectMapper objectMapper;
-
-    // Placeholder for a system token if user tokens aren't available
-    // In a real app, you'd store per-user tokens or use a GitHub App installation
-    // token.
-    private static final String SYSTEM_PAT = System.getenv("GITHUB_TOKEN");
 
     public void processPayload(String eventType, String payload) throws Exception {
         JsonNode root = objectMapper.readTree(payload);
+        String installationId = root.path("installation").path("id").asText();
+
+        if (installationId == null || installationId.isEmpty()) {
+            log.warn("Github event {} received without installation id", eventType);
+            return;
+        }
 
         switch (eventType) {
             case "push":
-                handlePush(root);
+                handlePush(root, installationId);
+                break;
+            case "installation":
+                handleInstallation(root, installationId);
+                break;
+            case "installation_repositories":
+                handleInstallationRepositories(root, installationId);
                 break;
             case "repository":
-                handleRepository(root);
-                break;
-            case "member":
-                handleMember(root);
+                handleRepository(root, installationId);
                 break;
             default:
                 log.info("Unhandled GitHub event type: {}", eventType);
         }
     }
 
-    private void handlePush(JsonNode root) {
-        String ref = root.path("ref").asText(); // e.g., refs/heads/main
+    private void handlePush(JsonNode root, String installationId) {
+        String ref = root.path("ref").asText();
         if (ref == null || !ref.startsWith("refs/heads/"))
             return;
 
         String branchName = ref.replace("refs/heads/", "");
         String nodeId = root.path("repository").path("node_id").asText();
 
-        log.info("Push detected on repo {} branch {}", nodeId, branchName);
-
-        // We need a token. Using SYSTEM_PAT as fallback.
-        // Ideally, we'd find the user who owned this repo and use their token.
-        githubSyncService.syncSelective(nodeId, branchName, SYSTEM_PAT);
+        syncQueueProducer.pushJob(SyncJobRequest.builder()
+                .type(SyncJobRequest.JobType.PUSH)
+                .installationId(installationId)
+                .repositoryId(nodeId)
+                .branchName(branchName)
+                .build());
     }
 
-    private void handleRepository(JsonNode root) {
+    private void handleInstallation(JsonNode root, String installationId) {
         String action = root.path("action").asText();
-        if ("created".equals(action) || "publicized".equals(action)) {
-            JsonNode repoNode = root.path("repository");
-            String nodeId = repoNode.path("node_id").asText();
-            String repoName = repoNode.path("name").asText();
-            log.info("New repository created/publicized: {} ({})", repoName, nodeId);
+        String senderId = root.path("sender").path("id").asText();
 
-            // Attempt to find the sender (user who created it) in our system
-            String senderId = root.path("sender").path("id").asText();
-            com.backend.githubanalyzer.domain.user.entity.User user = githubSyncService.findUserByGithubId(senderId);
+        log.info("GitHub App installation {}: {} by sender {}", action, installationId, senderId);
 
-            if (user != null) {
-                // Mapping the JSON to DTO for the existing sync method
-                try {
-                    com.backend.githubanalyzer.infra.github.dto.GithubRepoResponse repoDto = objectMapper.treeToValue(
-                            repoNode, com.backend.githubanalyzer.infra.github.dto.GithubRepoResponse.class);
-                    githubSyncService.syncSingleRepo(user, repoDto, SYSTEM_PAT);
-                } catch (Exception e) {
-                    log.error("Failed to parse repo DTO from webhook: {}", e.getMessage());
-                }
-            } else {
-                log.warn("Sender {} not found in system, skipping auto-sync", senderId);
+        if ("created".equals(action)) {
+            // Trigger a sync job that will also associate the installationId with the user
+            syncQueueProducer.pushJob(SyncJobRequest.builder()
+                    .type(SyncJobRequest.JobType.INSTALLATION)
+                    .installationId(installationId)
+                    .githubLogin(root.path("sender").path("login").asText())
+                    .build());
+        } else if ("deleted".equals(action)) {
+            syncQueueProducer.pushJob(SyncJobRequest.builder()
+                    .type(SyncJobRequest.JobType.UNINSTALLATION)
+                    .installationId(installationId)
+                    .build());
+        }
+    }
+
+    private void handleInstallationRepositories(JsonNode root, String installationId) {
+        String action = root.path("action").asText();
+        JsonNode reposAdded = root.path("repositories_added");
+
+        if ("added".equals(action) && reposAdded.isArray()) {
+            for (JsonNode repo : reposAdded) {
+                String nodeId = repo.path("node_id").asText();
+                syncQueueProducer.pushJob(SyncJobRequest.builder()
+                        .type(SyncJobRequest.JobType.REPO_SYNC)
+                        .installationId(installationId)
+                        .repositoryId(nodeId)
+                        .build());
             }
         }
     }
 
-    private void handleMember(JsonNode root) {
+    private void handleRepository(JsonNode root, String installationId) {
         String action = root.path("action").asText();
-        if ("added".equals(action)) {
-            String login = root.path("member").path("login").asText();
-            String repoNodeId = root.path("repository").path("node_id").asText();
-            log.info("New member {} added to repo {}", login, repoNodeId);
+        String nodeId = root.path("repository").path("node_id").asText();
 
-            // Trigger sync for this repo to update contributions
-            githubSyncService.syncSelective(repoNodeId, null, SYSTEM_PAT);
+        if ("deleted".equals(action)) {
+            syncQueueProducer.pushJob(SyncJobRequest.builder()
+                    .type(SyncJobRequest.JobType.REPOSITORY_DELETED)
+                    .installationId(installationId)
+                    .repositoryId(nodeId)
+                    .build());
         }
     }
 }

@@ -23,6 +23,7 @@ public class GithubSyncService {
     private final GithubApiService githubApiService;
     private final GithubPersistenceService githubPersistenceService;
     private final com.backend.githubanalyzer.domain.user.service.UserService userService;
+    private final com.backend.githubanalyzer.infra.github.service.GithubAppService githubAppService;
 
     public User findUserByGithubId(String githubId) {
         return userService.findByGithubId(githubId);
@@ -101,6 +102,36 @@ public class GithubSyncService {
             log.info("Successfully completed sync for user: {}", syncUsername);
         } catch (Exception e) {
             log.error("Failed to sync data for userId: {}", userId, e);
+        }
+    }
+
+    @Async
+    public void syncRepo(String repoId) {
+        GithubRepository repository = githubPersistenceService.findById(repoId);
+        if (repository == null || repository.getOwner() == null) {
+            log.warn("Repository or owner not found for sync: {}", repoId);
+            return;
+        }
+
+        User owner = repository.getOwner();
+        String installationId = owner.getInstallationId();
+
+        if (installationId == null) {
+            log.warn("No installation ID for owner {} of repo {}", owner.getUsername(), repoId);
+            return;
+        }
+
+        try {
+            String token = githubAppService.getInstallationToken(installationId);
+            // Fetch single repo details or just sync commits
+            // For now, let's just sync commits since repo metadata changes less often
+            syncCommitsForRepo(owner.getUsername(), repository, owner, token);
+            repository.setLastSyncAt(LocalDateTime.now());
+            githubPersistenceService.save(repository);
+            githubPersistenceService.refreshRepoStats(repository);
+            log.info("Successfully synced repo: {}", repoId);
+        } catch (Exception e) {
+            log.error("Failed to sync repo {}: {}", repoId, e.getMessage());
         }
     }
 
