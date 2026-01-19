@@ -20,7 +20,7 @@ public class User {
     @Column(nullable = false, unique = true)
     private String username; // GitHub Login ID
 
-    @Column(nullable = false, unique = true)
+    @Column(name = "email", nullable = true, unique = true)
     private String email;
 
     private String notifyEmail;
@@ -44,12 +44,26 @@ public class User {
     @Column(nullable = false, unique = true)
     private String githubId; // Keep numerical ID for internal tracking if needed
 
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean isGhost = false;
+
+    private String reposEtag;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Long commitCount = 0L;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Long score = 0L;
+
     private LocalDateTime createdAt;
 
     @PrePersist
     private void prePersist() {
         this.createdAt = LocalDateTime.now();
-        if (this.notifyEmail == null) {
+        if (this.notifyEmail == null && this.email != null) {
             this.notifyEmail = this.email;
         }
     }

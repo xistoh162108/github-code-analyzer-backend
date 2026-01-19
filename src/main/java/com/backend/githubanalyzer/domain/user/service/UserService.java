@@ -3,18 +3,18 @@ package com.backend.githubanalyzer.domain.user.service;
 import com.backend.githubanalyzer.domain.user.dto.UserResponse;
 import com.backend.githubanalyzer.domain.user.entity.User;
 import com.backend.githubanalyzer.domain.user.repository.UserRepository;
+import com.backend.githubanalyzer.domain.commit.repository.CommitRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
 @Service
+@RequiredArgsConstructor
 public class UserService {
         private final UserRepository userRepository;
-
-        public UserService(UserRepository userRepository) {
-                this.userRepository = userRepository;
-        }
+        private final CommitRepository commitRepository;
 
         @Transactional(readOnly = true)
         public UserResponse getMe(String email) {
@@ -44,6 +44,7 @@ public class UserService {
 
                 if (userOptional.isPresent()) {
                         user = userOptional.get();
+                        user.setIsGhost(false); // Registered users are not ghosts
                         updateUserInfo(user, username, email, avatarUrl, location, company, publicRepos);
                 } else {
                         Optional<User> usernameUserOptional = userRepository.findByUsername(username);
@@ -60,9 +61,47 @@ public class UserService {
                                                 .location(location)
                                                 .company(company)
                                                 .publicRepos(publicRepos)
+                                                .isGhost(false)
                                                 .build();
                         }
                 }
+                return userRepository.save(user);
+        }
+
+        public User findByGithubId(String githubId) {
+                return userRepository.findByGithubId(githubId).orElse(null);
+        }
+
+        @Transactional
+        public User getOrCreateGhostUser(String githubId, String username, String avatarUrl) {
+                return userRepository.findByGithubId(githubId)
+                                .map(user -> {
+                                        if (user.getIsGhost() && avatarUrl != null && user.getProfileUrl() == null) {
+                                                user.setProfileUrl(avatarUrl);
+                                                return userRepository.save(user);
+                                        }
+                                        return user;
+                                })
+                                .orElseGet(() -> {
+                                        User ghost = User.builder()
+                                                        .githubId(githubId)
+                                                        .username(username)
+                                                        .email(null)
+                                                        .profileUrl(avatarUrl)
+                                                        .isGhost(true)
+                                                        .notifySprint(false)
+                                                        .notifyWeekly(false)
+                                                        .build();
+                                        return userRepository.save(ghost);
+                                });
+        }
+
+        public User findById(Long id) {
+                return userRepository.findById(id).orElse(null);
+        }
+
+        @Transactional
+        public User save(User user) {
                 return userRepository.save(user);
         }
 
@@ -76,5 +115,15 @@ public class UserService {
                 user.setLocation(location);
                 user.setCompany(company);
                 user.setPublicRepos(publicRepos);
+        }
+
+        @Transactional
+        public void refreshUserStats(User user) {
+                long count = commitRepository.countByAuthorId(user.getId());
+                Long sum = commitRepository.sumTotalScoreByAuthorId(user.getId());
+
+                user.setCommitCount(count);
+                user.setScore(sum != null ? sum : 0L);
+                userRepository.save(user);
         }
 }

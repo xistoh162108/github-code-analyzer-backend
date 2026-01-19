@@ -27,5 +27,10 @@ public class Contribution {
     @JoinColumn(name = "repo_id")
     private GithubRepository repository;
 
+    @Column(name = "contribution_rank")
     private Long rank;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "contribution_type")
+    private ContributionType contributionType;
 }

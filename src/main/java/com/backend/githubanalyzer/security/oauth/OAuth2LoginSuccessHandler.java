@@ -1,5 +1,6 @@
 package com.backend.githubanalyzer.security.oauth;
 
+import com.backend.githubanalyzer.domain.sync.service.GithubSyncService;
 import com.backend.githubanalyzer.domain.user.entity.User;
 import com.backend.githubanalyzer.domain.user.service.UserService;
 import com.backend.githubanalyzer.security.dto.JwtToken;
@@ -10,6 +11,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
@@ -23,7 +27,9 @@ import java.util.Map;
 public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private final JwtTokenProvider jwtTokenProvider;
-    private final UserService userService; // Changed from UserRepository
+    private final UserService userService;
+    private final GithubSyncService githubSyncService;
+    private final OAuth2AuthorizedClientService authorizedClientService;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request,
@@ -41,9 +47,19 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         String company = (String) attributes.get("company");
         Integer publicRepos = (Integer) attributes.get("public_repos");
 
-        // Use Transactional service for syncing
+        // Use Transactional service for syncing profile
         User user = userService.syncUserFromGithub(githubId, username, email, avatarUrl, location, company,
                 publicRepos);
+
+        // Fetch GitHub Access Token for synchronization
+        OAuth2AuthenticationToken oauthToken = (OAuth2AuthenticationToken) authentication;
+        OAuth2AuthorizedClient client = authorizedClientService.loadAuthorizedClient(
+                oauthToken.getAuthorizedClientRegistrationId(),
+                oauthToken.getName());
+        String githubAccessToken = client.getAccessToken().getTokenValue();
+
+        // Trigger background data sync
+        githubSyncService.syncAllData(user.getId(), githubAccessToken);
 
         // Issue JWT
         String subject = user.getEmail();

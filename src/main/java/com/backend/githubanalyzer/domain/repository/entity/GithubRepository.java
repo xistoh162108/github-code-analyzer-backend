@@ -26,6 +26,7 @@ public class GithubRepository {
     @Column(name = "repo_url", nullable = false)
     private String repoUrl;
 
+    @Column(columnDefinition = "TEXT")
     private String description;
 
     private String language;
@@ -34,6 +35,7 @@ public class GithubRepository {
 
     private Long stars;
 
+    @Column(columnDefinition = "TEXT")
     private String topics; // CSV format: "spring,security,jwt"
 
     @Column(nullable = false)
@@ -48,4 +50,26 @@ public class GithubRepository {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
+
+    @Column(name = "branch_num", nullable = false)
+    @Builder.Default
+    private Long branchNum = 0L;
+
+    @Column(name = "commit_count", nullable = false)
+    @Builder.Default
+    private Long commitCount = 0L;
+
+    @Column(name = "score", nullable = false)
+    @Builder.Default
+    private Long score = 0L;
+
+    @Column(name = "sync_status")
+    private String syncStatus; // PENDING, RUNNING, COMPLETED, FAILED
+
+    @Column(name = "last_sync_at")
+    private LocalDateTime lastSyncAt;
+
+    private String branchesEtag;
+
+    private String commitsEtag;
 }

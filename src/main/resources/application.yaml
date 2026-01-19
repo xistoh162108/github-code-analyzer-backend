@@ -28,6 +28,7 @@ spring:
             scope:
               - read:user
               - user:email
+              - repo
 
 jwt:
   secret: "2/892JwfoycUtzSgm/QrCVaWgyjT2SpfOL1xv9yDA5s3hLFU7vdU+TgNdarMt+ulkq9cOJ/LLgex39mygsk94Q=="
@@ -38,6 +39,11 @@ jwt:
 
 server:
   port: '8080'
+
+openai:
+  api:
+    key: ${OPENAI_API_KEY:}
+  model: gpt-4o-mini
 
 logging:
   level:
