@@ -24,6 +24,11 @@
     "panels": [
         {
             "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "noValue": "0"
+                }
+            },
             "gridPos": {
                 "h": 4,
                 "w": 4,
@@ -57,6 +62,11 @@
         },
         {
             "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "noValue": "0"
+                }
+            },
             "gridPos": {
                 "h": 4,
                 "w": 4,
@@ -90,6 +100,11 @@
         },
         {
             "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "noValue": "0"
+                }
+            },
             "gridPos": {
                 "h": 4,
                 "w": 4,
@@ -123,6 +138,11 @@
         },
         {
             "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "noValue": "0"
+                }
+            },
             "gridPos": {
                 "h": 4,
                 "w": 4,
@@ -156,6 +176,11 @@
         },
         {
             "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "noValue": "0"
+                }
+            },
             "gridPos": {
                 "h": 4,
                 "w": 4,
@@ -189,6 +214,11 @@
         },
         {
             "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "noValue": "0"
+                }
+            },
             "gridPos": {
                 "h": 4,
                 "w": 4,
@@ -265,12 +295,12 @@
             },
             "targets": [
                 {
-                    "expr": "rate(http_server_requests_seconds_count[1m])",
-                    "legendFormat": "Internal Requests",
+                    "expr": "sum by (uri) (rate(http_server_requests_seconds_count[1m]))",
+                    "legendFormat": "{{uri}}",
                     "refId": "A"
                 }
             ],
-            "title": "Internal API Traffic",
+            "title": "Real-time API Throughput (Requests/sec)",
             "type": "timeseries"
         },
         {
@@ -308,12 +338,50 @@
             "id": 10,
             "targets": [
                 {
-                    "expr": "{job=\"spring_logs\"} |= \"ERROR\"",
+                    "expr": "{job=\"spring_logs\"}",
                     "refId": "A"
                 }
             ],
-            "title": "Recent Error Logs",
+            "title": "Application Combined Logs",
             "type": "logs"
+        },
+        {
+            "datasource": "Prometheus",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 20
+            },
+            "id": 11,
+            "targets": [
+                {
+                    "expr": "sum by (uri) (http_server_requests_seconds_count)",
+                    "legendFormat": "{{uri}}",
+                    "refId": "A"
+                }
+            ],
+            "title": "Cumulative API Requests",
+            "type": "timeseries"
+        },
+        {
+            "datasource": "Prometheus",
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 20
+            },
+            "id": 12,
+            "targets": [
+                {
+                    "expr": "sum by (uri) (increase(http_server_requests_seconds_count[1h]))",
+                    "legendFormat": "{{uri}}",
+                    "refId": "A"
+                }
+            ],
+            "title": "API Traffic Analysis (Requests per Hour)",
+            "type": "timeseries"
         }
     ],
     "refresh": "5s",
@@ -331,6 +399,6 @@
     "timezone": "",
     "title": "Spring Study Main Dashboard",
     "uid": "spring-study-main",
-    "version": 1,
+    "version": 2,
     "weekStart": ""
 }
