@@ -26,6 +26,9 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtFilter;
     private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
 
+    @org.springframework.beans.factory.annotation.Value("${app.frontend-url}")
+    private String frontendUrl;
+
     @Bean
     AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration)
             throws Exception {
@@ -36,7 +39,14 @@ public class SecurityConfig {
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        config.setAllowedOrigins(List.of("http://localhost:5175"));
+        // Allow production domain, potential Vercel/Netlify previews, and local
+        // development
+        config.setAllowedOrigins(List.of(
+                frontendUrl,
+                "https://sprintgit.com",
+                "http://localhost:3000",
+                "http://localhost:5173",
+                "http://localhost:5175"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("Set-Cookie"));

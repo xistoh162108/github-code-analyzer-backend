@@ -29,59 +29,68 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
-    private final JwtTokenProvider jwtTokenProvider;
-    private final UserService userService;
-    private final GithubSyncService githubSyncService;
-    private final GithubAppService githubAppService;
-    private final OAuth2AuthorizedClientService authorizedClientService;
+        private final JwtTokenProvider jwtTokenProvider;
+        private final UserService userService;
+        private final GithubSyncService githubSyncService;
+        private final GithubAppService githubAppService;
+        private final OAuth2AuthorizedClientService authorizedClientService;
 
-    @Override
-    public void onAuthenticationSuccess(HttpServletRequest request,
-            HttpServletResponse response,
-            Authentication authentication) throws IOException {
+        @org.springframework.beans.factory.annotation.Value("${app.frontend-url}")
+        private String frontendUrl;
 
-        OAuth2User oauth2User = (OAuth2User) authentication.getPrincipal();
-        Map<String, Object> attributes = oauth2User.getAttributes();
+        @Override
+        public void onAuthenticationSuccess(HttpServletRequest request,
+                        HttpServletResponse response,
+                        Authentication authentication) throws IOException {
 
-        String githubId = String.valueOf(attributes.get("id"));
-        String username = (String) attributes.get("login");
-        String email = (String) attributes.get("email");
-        String avatarUrl = (String) attributes.get("avatar_url");
-        String location = (String) attributes.get("location");
-        String company = (String) attributes.get("company");
-        Integer publicRepos = (Integer) attributes.get("public_repos");
+                OAuth2User oauth2User = (OAuth2User) authentication.getPrincipal();
+                Map<String, Object> attributes = oauth2User.getAttributes();
 
-        // Use Transactional service for syncing profile
-        User user = userService.syncUserFromGithub(githubId, username, email, avatarUrl, location, company,
-                publicRepos);
+                String githubId = String.valueOf(attributes.get("id"));
+                String username = (String) attributes.get("login");
+                String email = (String) attributes.get("email");
+                String avatarUrl = (String) attributes.get("avatar_url");
+                String location = (String) attributes.get("location");
+                String company = (String) attributes.get("company");
+                Integer publicRepos = (Integer) attributes.get("public_repos");
 
-        // Proactive Installation Association
-        if (user.getInstallationId() == null) {
-            String installationId = githubAppService.getInstallationIdByUser(username);
-            if (installationId != null) {
-                user.setInstallationId(installationId);
-                userService.save(user);
-                log.info("Proactively associated installation ID {} with user {}", installationId, username);
-            }
+                // Use Transactional service for syncing profile
+                User user = userService.syncUserFromGithub(githubId, username, email, avatarUrl, location, company,
+                                publicRepos);
+
+                // Proactive Installation Association
+                if (user.getInstallationId() == null) {
+                        String installationId = githubAppService.getInstallationIdByUser(username);
+                        if (installationId != null) {
+                                user.setInstallationId(installationId);
+                                userService.save(user);
+                                log.info("Proactively associated installation ID {} with user {}", installationId,
+                                                username);
+                        }
+                }
+
+                // Fetch GitHub Access Token for synchronization
+                OAuth2AuthenticationToken oauthToken = (OAuth2AuthenticationToken) authentication;
+                OAuth2AuthorizedClient client = authorizedClientService.loadAuthorizedClient(
+                                oauthToken.getAuthorizedClientRegistrationId(),
+                                oauthToken.getName());
+                String githubAccessToken = client.getAccessToken().getTokenValue();
+
+                // Trigger background data sync
+                githubSyncService.syncAllData(user.getId(), githubAccessToken);
+
+                // Issue JWT
+                String subject = user.getEmail();
+                Authentication jwtAuth = new UsernamePasswordAuthenticationToken(subject, null,
+                                List.of(new SimpleGrantedAuthority("ROLE_USER")));
+                JwtToken token = jwtTokenProvider.generateToken(jwtAuth);
+
+                // Redirect to Frontend with tokens (Change this path if your frontend uses a
+                // different callback page)
+                String redirectUrl = frontendUrl + "/auth/callback?accessToken=" + token.getAccessToken()
+                                + "&refreshToken=" + token.getRefreshToken();
+
+                log.info("Redirecting to frontend: {}", redirectUrl);
+                response.sendRedirect(redirectUrl);
         }
-
-        // Fetch GitHub Access Token for synchronization
-        OAuth2AuthenticationToken oauthToken = (OAuth2AuthenticationToken) authentication;
-        OAuth2AuthorizedClient client = authorizedClientService.loadAuthorizedClient(
-                oauthToken.getAuthorizedClientRegistrationId(),
-                oauthToken.getName());
-        String githubAccessToken = client.getAccessToken().getTokenValue();
-
-        // Trigger background data sync
-        githubSyncService.syncAllData(user.getId(), githubAccessToken);
-
-        // Issue JWT
-        String subject = user.getEmail();
-        Authentication jwtAuth = new UsernamePasswordAuthenticationToken(subject, null,
-                List.of(new SimpleGrantedAuthority("ROLE_USER")));
-        JwtToken token = jwtTokenProvider.generateToken(jwtAuth);
-
-        response.sendRedirect("/api/auth/test/success?accessToken=" + token.getAccessToken() + "&refreshToken="
-                + token.getRefreshToken());
-    }
 }
