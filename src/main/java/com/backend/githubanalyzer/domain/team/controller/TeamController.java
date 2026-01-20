@@ -26,21 +26,22 @@ public class TeamController {
     // 1. 팀 생성
     @io.swagger.v3.oas.annotations.Operation(summary = "Create Team (팀 생성)", description = "새로운 팀을 생성하고 생성자를 Leader로 지정합니다.")
     @PostMapping
-    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<String>> createTeam(
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse>> createTeam(
             @RequestBody TeamCreateRequest request) {
-        String teamId = teamService.createTeam(request);
-        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(teamId));
+        com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse response = teamService.createTeam(request);
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(response));
     }
 
     // 2. 팀 수정
     @io.swagger.v3.oas.annotations.Operation(summary = "Update Team (팀 정보 수정)", description = "팀 이름, 설명, 공개 여부 등을 수정합니다. (Leader Only)")
     @PutMapping("/{teamId}")
-    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<Void>> updateTeam(
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse>> updateTeam(
             @PathVariable String teamId,
             @RequestBody com.backend.githubanalyzer.domain.team.dto.TeamUpdateRequest request) {
         User currentUser = getCurrentUser();
-        teamService.updateTeam(teamId, request, currentUser);
-        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(null));
+        com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse response = teamService.updateTeam(teamId, request,
+                currentUser);
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(response));
     }
 
     // 3. 팀 상세 조회 (Constraints Applied)
@@ -62,26 +63,37 @@ public class TeamController {
         return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(members));
     }
 
+    // New: 내 팀 조회
+    @io.swagger.v3.oas.annotations.Operation(summary = "Get My Teams (내 팀 조회)", description = "내가 속한 팀 목록을 조회합니다.")
+    @GetMapping("/my")
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<List<com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse>>> getMyTeams() {
+        User currentUser = getCurrentUser();
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(
+                teamService.getMyTeams(currentUser.getId())));
+    }
+
     // 5. 팀 가입 신청 (Code required for private)
     @io.swagger.v3.oas.annotations.Operation(summary = "Join Team (팀 가입 신청)", description = "팀에 가입을 신청합니다. 비공개 팀의 경우 가입 코드가 필요할 수 있습니다.")
     @PostMapping("/{teamId}/join")
-    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<Void>> joinTeam(
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse>> joinTeam(
             @PathVariable String teamId,
             @io.swagger.v3.oas.annotations.Parameter(description = "비공개 팀 가입 코드") @RequestParam(required = false) String code) {
         User currentUser = getCurrentUser();
-        teamService.joinTeam(teamId, currentUser, code);
-        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(null));
+        com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse response = teamService.joinTeam(teamId,
+                currentUser, code);
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(response));
     }
 
     // 6. 멤버 승인 (Leader Only)
     @io.swagger.v3.oas.annotations.Operation(summary = "Approve Member (멤버 가입 승인)", description = "가입 신청한 멤버를 승인합니다. (Leader Only)")
     @PostMapping("/{teamId}/approve")
-    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<Void>> approveMember(
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse>> approveMember(
             @PathVariable String teamId,
             @RequestParam Long userId) {
         User currentUser = getCurrentUser();
-        teamService.approveMember(teamId, userId, currentUser);
-        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(null));
+        com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse response = teamService.approveMember(teamId,
+                userId, currentUser);
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(response));
     }
 
     // 7. 멤버 강퇴 (Leader Only)

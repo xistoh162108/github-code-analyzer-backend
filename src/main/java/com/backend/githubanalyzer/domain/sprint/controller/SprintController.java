@@ -25,10 +25,10 @@ public class SprintController {
 
     @io.swagger.v3.oas.annotations.Operation(summary = "Create Sprint (스프린트 생성)", description = "새로운 스프린트를 생성합니다.")
     @PostMapping
-    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<String>> createSprint(
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.domain.sprint.dto.SprintResponse>> createSprint(
             @RequestBody SprintCreateRequest request) {
-        String sprintId = sprintService.createSprint(request);
-        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(sprintId));
+        com.backend.githubanalyzer.domain.sprint.dto.SprintResponse response = sprintService.createSprint(request);
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(response));
     }
 
     @io.swagger.v3.oas.annotations.Operation(summary = "List Public Sprints (공개 스프린트 조회)", description = "현재 참여 가능한 공개 스프린트 목록을 조회합니다.")
@@ -62,44 +62,45 @@ public class SprintController {
 
     @io.swagger.v3.oas.annotations.Operation(summary = "Update Sprint (스프린트 수정)", description = "스프린트 정보를 수정합니다. 매니저만 가능합니다.")
     @PutMapping("/{sprintId}")
-    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<Void>> updateSprint(
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.domain.sprint.dto.SprintResponse>> updateSprint(
             @PathVariable String sprintId,
             @RequestBody SprintCreateRequest request) {
         User currentUser = getCurrentUser();
-        sprintService.updateSprint(sprintId, request, currentUser.getId());
-        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(null));
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse
+                .success(sprintService.updateSprint(sprintId, request, currentUser.getId())));
     }
 
     @io.swagger.v3.oas.annotations.Operation(summary = "Register Team (스프린트 참가 신청)", description = "팀 단위로 스프린트에 참가를 신청합니다. 팀장만 가능합니다.")
     @PostMapping("/{sprintId}/registration")
-    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<Void>> registerTeamToSprint(
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse>> registerTeamToSprint(
             @PathVariable String sprintId,
             @RequestBody SprintRegisterRequest request) {
 
         User currentUser = getCurrentUser();
-        sprintService.registerTeamToSprint(sprintId, request.teamId(), request.repoId(), currentUser.getId());
-        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(null));
+        com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse response = sprintService
+                .registerTeamToSprint(sprintId, request.teamId(), request.repoId(), currentUser.getId());
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(response));
     }
 
     @io.swagger.v3.oas.annotations.Operation(summary = "Approve/Reject Team (참가 승인/거절)", description = "참가 신청한 팀을 승인하거나 거절합니다. (비공개 스프린트 매니저 기능)")
     @PostMapping("/{sprintId}/registrations/{teamId}/approve")
-    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<Void>> approveTeam(
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse>> approveTeam(
             @PathVariable String sprintId,
             @PathVariable String teamId,
             @io.swagger.v3.oas.annotations.Parameter(description = "true: 승인, false: 거절") @RequestParam boolean approve) {
         User currentUser = getCurrentUser();
-        sprintService.approveTeamRegistration(sprintId, teamId, currentUser.getId(), approve);
-        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(null));
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse
+                .success(sprintService.approveTeamRegistration(sprintId, teamId, currentUser.getId(), approve)));
     }
 
     @io.swagger.v3.oas.annotations.Operation(summary = "Ban Team (팀 강퇴)", description = "특정 팀을 스프린트에서 강퇴시킵니다. (매니저 기능)")
     @PostMapping("/{sprintId}/registrations/{teamId}/ban")
-    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<Void>> banTeam(
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse>> banTeam(
             @PathVariable String sprintId,
             @PathVariable String teamId) {
         User currentUser = getCurrentUser();
-        sprintService.banTeam(sprintId, teamId, currentUser);
-        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(null));
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse
+                .success(sprintService.banTeam(sprintId, teamId, currentUser)));
     }
 
     private User getCurrentUser() {

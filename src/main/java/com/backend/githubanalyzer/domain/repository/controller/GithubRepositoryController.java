@@ -50,8 +50,10 @@ public class GithubRepositoryController {
 
     @io.swagger.v3.oas.annotations.Operation(summary = "Sync Repository (동기화 요청)", description = "레포지토리의 최신 데이터를 GitHub에서 받아오도록 비동기 동기화 작업을 요청합니다.")
     @PostMapping("/{repoId}/sync")
-    public ResponseEntity<ApiResponse<Void>> sync(@PathVariable String repoId) {
-        githubSyncService.syncRepo(repoId);
-        return ResponseEntity.ok(ApiResponse.success("동기화 요청이 접수되었습니다.", null));
+    public ResponseEntity<ApiResponse<com.backend.githubanalyzer.domain.repository.dto.SyncStatusResponse>> sync(
+            @PathVariable String repoId) {
+        com.backend.githubanalyzer.domain.repository.dto.SyncStatusResponse response = githubSyncService
+                .syncRepo(repoId);
+        return ResponseEntity.ok(ApiResponse.success("동기화 요청이 접수되었습니다.", response));
     }
 }

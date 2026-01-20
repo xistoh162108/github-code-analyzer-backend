@@ -11,4 +11,6 @@ public interface SprintRepository extends JpaRepository<Sprint, String> {
     List<Sprint> findByIsPrivateFalse();
 
     List<Sprint> findAllByNameContainingIgnoreCase(String name);
+
+    List<Sprint> findByManagerId(Long managerId);
 }

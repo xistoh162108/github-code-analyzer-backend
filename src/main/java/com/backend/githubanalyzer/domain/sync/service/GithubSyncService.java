@@ -126,8 +126,23 @@ public class GithubSyncService {
         }
     }
 
+    public com.backend.githubanalyzer.domain.repository.dto.SyncStatusResponse syncRepo(String repoId) {
+        GithubRepository repository = githubPersistenceService.findById(repoId);
+        if (repository == null) {
+            throw new IllegalArgumentException("Repository not found: " + repoId);
+        }
+
+        // Trigger Async Process
+        internalSyncRepo(repoId);
+
+        return new com.backend.githubanalyzer.domain.repository.dto.SyncStatusResponse(
+                "QUEUED",
+                repoId,
+                LocalDateTime.now());
+    }
+
     @Async
-    public void syncRepo(String repoId) {
+    protected void internalSyncRepo(String repoId) {
         GithubRepository repository = githubPersistenceService.findById(repoId);
         if (repository == null || repository.getOwner() == null) {
             log.warn("Repository or owner not found for sync: {}", repoId);

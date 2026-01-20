@@ -80,7 +80,8 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                 githubSyncService.syncAllData(user.getId(), githubAccessToken);
 
                 // Issue JWT
-                String subject = user.getEmail();
+                String subject = user.getUsername();
+                log.info("Generating JWT with subject (username): {}", subject);
                 Authentication jwtAuth = new UsernamePasswordAuthenticationToken(subject, null,
                                 List.of(new SimpleGrantedAuthority("ROLE_USER")));
                 JwtToken token = jwtTokenProvider.generateToken(jwtAuth);

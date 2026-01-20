@@ -83,9 +83,10 @@ public class NotificationService {
     }
 
     @Transactional
-    public void markAsRead(Long id) {
+    public NotificationResponse markAsRead(Long id) {
         Notification notification = notificationRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Notification not found"));
         notification.markAsRead();
+        return NotificationResponse.from(notification);
     }
 }

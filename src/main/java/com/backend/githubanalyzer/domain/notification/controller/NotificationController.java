@@ -41,9 +41,8 @@ public class NotificationController {
 
     @io.swagger.v3.oas.annotations.Operation(summary = "Mark as Read (읽음 처리)", description = "특정 알림을 읽음 상태로 변경합니다.")
     @PutMapping("/{id}/read")
-    public ResponseEntity<Void> markAsRead(@PathVariable Long id) {
-        notificationService.markAsRead(id);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<NotificationResponse> markAsRead(@PathVariable Long id) {
+        return ResponseEntity.ok(notificationService.markAsRead(id));
     }
 
     private User getCurrentUser() {

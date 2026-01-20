@@ -132,7 +132,8 @@ public class TeamService {
     }
 
     // 1. 팀 생성
-    public String createTeam(com.backend.githubanalyzer.domain.team.dto.TeamCreateRequest request) {
+    public com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse createTeam(
+            com.backend.githubanalyzer.domain.team.dto.TeamCreateRequest request) {
         User leader = userRepository.findById(request.leaderId())
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
@@ -160,12 +161,15 @@ public class TeamService {
 
         userRegisterTeamRepository.save(member);
 
-        return teamId;
+        userRegisterTeamRepository.save(member);
+
+        return com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse.from(team);
     }
 
     // 4. Team Update (Name & Description) - Leader Only
     @Transactional
-    public void updateTeam(String teamId, com.backend.githubanalyzer.domain.team.dto.TeamUpdateRequest request,
+    public com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse updateTeam(String teamId,
+            com.backend.githubanalyzer.domain.team.dto.TeamUpdateRequest request,
             User user) {
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new IllegalArgumentException("Team not found"));
@@ -179,6 +183,7 @@ public class TeamService {
         // team.setIsPublic(request.isPublic()); // If we want to allow public switch
 
         teamRepository.save(team);
+        return com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse.from(team);
     }
 
     // 5. Team Details (Visibility Logic)
@@ -210,7 +215,8 @@ public class TeamService {
     }
 
     @Transactional
-    public void joinTeam(String teamId, User user, String code) {
+    public com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse joinTeam(String teamId, User user,
+            String code) {
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new IllegalArgumentException("Team not found"));
 
@@ -235,11 +241,19 @@ public class TeamService {
                 .status(status)
                 .inTeamRank(0L)
                 .build();
-        userRegisterTeamRepository.save(request);
+        UserRegisterTeam saved = userRegisterTeamRepository.save(request);
+
+        return new com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse(
+                saved.getUser().getId(),
+                saved.getUser().getUsername(),
+                saved.getRole(),
+                saved.getStatus(),
+                0L, 0L, 0L);
     }
 
     @Transactional
-    public void approveMember(String teamId, Long userId, User leader) {
+    public com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse approveMember(String teamId, Long userId,
+            User leader) {
         // Logic same as existing, just ensuring status transition
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new IllegalArgumentException("Team not found"));
@@ -252,7 +266,17 @@ public class TeamService {
                 .orElseThrow(() -> new IllegalArgumentException("No join request found."));
 
         membership.setStatus("APPROVED");
-        userRegisterTeamRepository.save(membership);
+        UserRegisterTeam saved = userRegisterTeamRepository.save(membership);
+
+        return new com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse(
+                saved.getUser().getId(),
+                saved.getUser().getUsername(),
+                saved.getRole(),
+                saved.getStatus(),
+                saved.getInTeamRank(),
+                0L, 0L // Stats might not be instant, or need recalc. sending 0 is safe for immediate
+                       // ACK
+        );
     }
 
     @Transactional
@@ -334,5 +358,20 @@ public class TeamService {
         }
 
         return response;
+    }
+
+    // 3. 내 팀 조회
+    @Transactional(readOnly = true)
+    public List<com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse> getMyTeams(Long userId) {
+        List<UserRegisterTeam> memberships = userRegisterTeamRepository.findByUserId(userId);
+
+        return memberships.stream()
+                .map(membership -> {
+                    Team team = membership.getTeam();
+                    // Simplified view or full view? User is member, so likely full view is okay.
+                    // But let's reuse TeamDetailResponse.from(team)
+                    return com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse.from(team);
+                })
+                .collect(Collectors.toList());
     }
 }

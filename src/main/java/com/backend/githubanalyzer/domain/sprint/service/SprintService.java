@@ -155,7 +155,8 @@ public class SprintService {
     }
 
     @Transactional
-    public String createSprint(com.backend.githubanalyzer.domain.sprint.dto.SprintCreateRequest request) {
+    public com.backend.githubanalyzer.domain.sprint.dto.SprintResponse createSprint(
+            com.backend.githubanalyzer.domain.sprint.dto.SprintCreateRequest request) {
         com.backend.githubanalyzer.domain.user.entity.User manager = userRepository.findById(request.managerId())
                 .orElseThrow(() -> new IllegalArgumentException("Manager not found"));
 
@@ -173,12 +174,13 @@ public class SprintService {
                 .build();
 
         sprintRepository.save(sprint);
-        return sprintId;
+        return com.backend.githubanalyzer.domain.sprint.dto.SprintResponse.from(sprint, 0L, 0L, "upcoming");
     }
 
     // Req 1 & 4 & 10: Update Sprint
     @Transactional
-    public void updateSprint(String sprintId, com.backend.githubanalyzer.domain.sprint.dto.SprintCreateRequest request,
+    public com.backend.githubanalyzer.domain.sprint.dto.SprintResponse updateSprint(String sprintId,
+            com.backend.githubanalyzer.domain.sprint.dto.SprintCreateRequest request,
             Long userId) {
         Sprint sprint = getSprint(sprintId);
 
@@ -216,6 +218,8 @@ public class SprintService {
         sprint.setIsOpen(request.isOpen());
 
         sprintRepository.save(sprint);
+        return com.backend.githubanalyzer.domain.sprint.dto.SprintResponse.from(sprint, 0L, 0L,
+                determineStatus(sprint));
     }
 
     public Sprint getSprint(String sprintId) {
@@ -232,7 +236,8 @@ public class SprintService {
 
     // Register Team (Req 1, 5, 6, 12, Leader Constraint, 1 Repo Constraint)
     @Transactional
-    public void registerTeamToSprint(String sprintId, String teamId, String repoId, Long userId) {
+    public com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse registerTeamToSprint(String sprintId,
+            String teamId, String repoId, Long userId) {
         Sprint sprint = getSprint(sprintId);
 
         // Req 5: Must be Open
@@ -275,11 +280,13 @@ public class SprintService {
                 .build();
 
         teamRegisterSprintRepository.save(registration);
+        return com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse.from(registration);
     }
 
     // Req 12: Approve/Reject
     @Transactional
-    public void approveTeamRegistration(String sprintId, String teamId, Long managerId, boolean approve) {
+    public com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse approveTeamRegistration(
+            String sprintId, String teamId, Long managerId, boolean approve) {
         Sprint sprint = getSprint(sprintId);
         if (!sprint.getManager().getId().equals(managerId)) {
             throw new AccessDeniedException("Only Manager can approve/reject.");
@@ -291,19 +298,14 @@ public class SprintService {
 
         if (approve) {
             reg.setStatus("APPROVED");
+            // Auto-save by transaction
         } else {
-            // Req 12: Rejected team can apply again -> Delete registration? or set REJECTED
-            // If set REJECTED, unique validation might block re-apply.
-            // Req says "Can apply again". So deleting is better, or 'REJECTED' status
-            // allows re-apply (would require composite key change or validation change).
-            // Simpler: Delete registration so they can try again.
-            // OR: Set REJECTED, and update 'registerTeamToSprint' to allow overwrite if
-            // REJECTED.
-            // Let's Delete for simplicity as "Rejecting" usually implies "Go away".
-            // Actually, letting them re-apply specifically suggests we should clear the
-            // state.
+            // Rejected -> Delete registration
             teamRegisterSprintRepository.delete(reg);
+            reg.setStatus("REJECTED"); // Mark for response
         }
+
+        return com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse.from(reg);
     }
 
     public java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintResponse> getPublicSprints() {
@@ -346,7 +348,8 @@ public class SprintService {
     }
 
     @Transactional
-    public void banTeam(String sprintId, String teamId, com.backend.githubanalyzer.domain.user.entity.User manager) {
+    public com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse banTeam(String sprintId,
+            String teamId, com.backend.githubanalyzer.domain.user.entity.User manager) {
         Sprint sprint = getSprint(sprintId);
 
         if (!sprint.getManager().getId().equals(manager.getId())) {
@@ -354,7 +357,15 @@ public class SprintService {
         }
 
         if (isTeamBanned(sprintId, teamId)) {
-            return;
+            // Already banned, return current state (which should be banned or deleted?)
+            // Logic below creates ban record. If already banned, maybe just return found
+            // reg?
+            // Or throw? Existing code returns void if banned.
+            // Let's fetch registration to return.
+            return teamRegisterSprintRepository.findBySprintIdAndTeamId(sprintId, teamId)
+                    .map(com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse::from)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Registration not found (even though ban check passed?)"));
         }
 
         com.backend.githubanalyzer.domain.team.entity.Team team = teamRepository.findById(teamId)
@@ -369,8 +380,13 @@ public class SprintService {
         bannedTeamRepository.save(ban);
 
         // Update Status to BANNED
-        teamRegisterSprintRepository.findBySprintIdAndTeamId(sprintId, teamId)
-                .ifPresent(reg -> reg.setStatus("BANNED"));
+        com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint reg = teamRegisterSprintRepository
+                .findBySprintIdAndTeamId(sprintId, teamId)
+                .orElseThrow(() -> new IllegalArgumentException("Registration not found"));
+
+        reg.setStatus("BANNED");
+
+        return com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse.from(reg);
     }
 
     public void validateSprintIdAccess(String sprintId, com.backend.githubanalyzer.domain.user.entity.User user) {
@@ -405,19 +421,27 @@ public class SprintService {
 
     public java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintResponse> getMyParticipatingSprints(
             Long userId) {
+        // 1. Participated via Team
         java.util.List<com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint> registrations = teamRegisterSprintRepository
                 .findSprintsByUserId(userId);
 
-        return registrations.stream()
-                .map(reg -> {
-                    Sprint sprint = reg.getSprint();
+        java.util.Set<Sprint> uniqueSprints = registrations.stream()
+                .map(com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint::getSprint)
+                .collect(java.util.stream.Collectors.toSet());
+
+        // 2. Managed Sprints
+        java.util.List<Sprint> managedSprints = sprintRepository.findByManagerId(userId);
+        uniqueSprints.addAll(managedSprints);
+
+        return uniqueSprints.stream()
+                .map(sprint -> {
                     long teamsCount = teamRegisterSprintRepository.countBySprintId(sprint.getId());
                     long participantsCount = teamRegisterSprintRepository.countParticipantsBySprintId(sprint.getId());
                     String status = determineStatus(sprint);
                     return com.backend.githubanalyzer.domain.sprint.dto.SprintResponse.from(sprint, teamsCount,
                             participantsCount, status);
                 })
-                .distinct()
+                .sorted((s1, s2) -> s2.startDate().compareTo(s1.startDate())) // Sort by recent
                 .collect(java.util.stream.Collectors.toList());
     }
 }

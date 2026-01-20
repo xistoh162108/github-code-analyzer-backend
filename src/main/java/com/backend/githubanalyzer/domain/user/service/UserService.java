@@ -26,9 +26,10 @@ public class UserService {
         private final ContributionRepository contributionRepository;
 
         @Transactional(readOnly = true)
-        public UserResponse getMe(String email) {
-                User user = userRepository.findByEmail(email)
-                                .orElseThrow(() -> new IllegalArgumentException("User not found with email: " + email));
+        public UserResponse getMe(String username) {
+                User user = userRepository.findByUsername(username)
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                                "User not found with username: " + username));
 
                 return UserResponse.builder()
                                 .id(user.getId())
@@ -46,9 +47,10 @@ public class UserService {
         }
 
         @Transactional
-        public UserResponse updateMe(String email, UserUpdateRequest request) {
-                User user = userRepository.findByEmail(email)
-                                .orElseThrow(() -> new IllegalArgumentException("User not found with email: " + email));
+        public UserResponse updateMe(String username, UserUpdateRequest request) {
+                User user = userRepository.findByUsername(username)
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                                "User not found with username: " + username));
 
                 if (request.getCompany() != null)
                         user.setCompany(request.getCompany());
@@ -62,7 +64,7 @@ public class UserService {
                         user.setNotifyWeekly(request.getNotifyWeekly());
 
                 userRepository.save(user);
-                return getMe(email);
+                return getMe(username);
         }
 
         @Transactional
@@ -166,17 +168,19 @@ public class UserService {
         }
 
         @Transactional
-        public void deleteUser(String email) {
-                User user = userRepository.findByEmail(email)
-                                .orElseThrow(() -> new IllegalArgumentException("User not found with email: " + email));
+        public void deleteUser(String username) {
+                User user = userRepository.findByUsername(username)
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                                "User not found with username: " + username));
                 // Handle cascade or manual cleanup if needed
                 userRepository.delete(user);
         }
 
         @Transactional(readOnly = true)
-        public List<CommitHeatmapResponse> getUserHeatmap(String email) {
-                User user = userRepository.findByEmail(email)
-                                .orElseThrow(() -> new IllegalArgumentException("User not found with email: " + email));
+        public List<CommitHeatmapResponse> getUserHeatmap(String username) {
+                User user = userRepository.findByUsername(username)
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                                "User not found with username: " + username));
 
                 List<Object[]> results = commitRepository.countCommitsByDayForUser_Native(user.getId());
                 return results.stream()
@@ -188,9 +192,10 @@ public class UserService {
         }
 
         @Transactional(readOnly = true)
-        public List<GithubRepositoryResponse> getUserRepositories(String email) {
-                User user = userRepository.findByEmail(email)
-                                .orElseThrow(() -> new IllegalArgumentException("User not found with email: " + email));
+        public List<GithubRepositoryResponse> getUserRepositories(String username) {
+                User user = userRepository.findByUsername(username)
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                                "User not found with username: " + username));
 
                 List<Contribution> contributions = contributionRepository.findAllByUserId(user.getId());
                 return contributions.stream()

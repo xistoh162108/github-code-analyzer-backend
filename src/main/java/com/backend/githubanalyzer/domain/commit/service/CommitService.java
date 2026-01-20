@@ -20,9 +20,9 @@ public class CommitService {
     private final com.backend.githubanalyzer.domain.user.repository.UserRepository userRepository;
 
     @Transactional(readOnly = true)
-    public List<CommitResponse> getUserRecentCommits(String email) {
-        com.backend.githubanalyzer.domain.user.entity.User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("User not found with email: " + email));
+    public List<CommitResponse> getUserRecentCommits(String username) {
+        com.backend.githubanalyzer.domain.user.entity.User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("User not found with username: " + username));
         return commitRepository.findAllByAuthorIdOrderByCommittedAtDesc(user.getId()).stream()
                 .map(this::toCommitResponse)
                 .collect(Collectors.toList());
