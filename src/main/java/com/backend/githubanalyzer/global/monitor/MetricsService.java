@@ -27,10 +27,12 @@ public class MetricsService {
     private final SprintRepository sprintRepository;
     private final GithubRepositoryRepository githubRepositoryRepository;
     private final CommitRepository commitRepository;
+    private final org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
 
     // Gauges (AtomicLongs to hold value)
     private final AtomicLong totalUsers = new AtomicLong(0);
     private final AtomicLong ghostUsers = new AtomicLong(0);
+    private final AtomicLong activeUsers = new AtomicLong(0); // Non-ghost users
     private final AtomicLong totalTeams = new AtomicLong(0);
     private final AtomicLong totalSprints = new AtomicLong(0);
 
@@ -48,6 +50,7 @@ public class MetricsService {
     public void init() {
         meterRegistry.gauge("business.users.total", totalUsers);
         meterRegistry.gauge("business.users.ghost", ghostUsers);
+        meterRegistry.gauge("business.users.active", activeUsers);
         meterRegistry.gauge("business.teams.total", totalTeams);
         meterRegistry.gauge("business.sprints.total", totalSprints);
 
@@ -58,6 +61,16 @@ public class MetricsService {
         meterRegistry.gauge("analysis.commits.total", totalCommits);
         meterRegistry.gauge("analysis.commits.completed", analyzedCommits);
         meterRegistry.gauge("analysis.commits.percentage", commitAnalysisPercent, AtomicReference::get);
+
+        // Register Redis Queue Sizes
+        registerQueueSize("github:sync:commit_queue", () -> {
+            Long size = redisTemplate.opsForList().size("github:sync:commit_queue");
+            return size != null ? size : 0;
+        });
+        registerQueueSize("github:analysis:queue", () -> {
+            Long size = redisTemplate.opsForList().size("github:analysis:queue");
+            return size != null ? size : 0;
+        });
     }
 
     // Custom Counter for External APIs
@@ -66,23 +79,28 @@ public class MetricsService {
     }
 
     // Helper to record Job duration
-    public void recordJobDuration(String jobName, Runnable task) {
-        meterRegistry.timer("job.execution.time", "job", jobName).record(task);
-    }
-
-    // Helper to register Queue Size Gauge
     public void registerQueueSize(String queueName, java.util.function.Supplier<Number> sizeSupplier) {
         io.micrometer.core.instrument.Gauge.builder("queue.size", sizeSupplier, s -> s.get().doubleValue())
                 .tag("queue", queueName)
                 .register(meterRegistry);
     }
 
+    // Helper to record Job duration
+    public void recordJobDuration(String jobName, Runnable task) {
+        meterRegistry.timer("job.execution.time", "job", jobName).record(task);
+    }
+
     // Scheduled task to update business metrics
     @Scheduled(fixedRate = 60000) // Update every minute
     public void updateBusinessMetrics() {
         try {
-            totalUsers.set(userRepository.count());
-            ghostUsers.set(userRepository.countByIsGhostTrue());
+            long total = userRepository.count();
+            long ghosts = userRepository.countByIsGhostTrue();
+
+            totalUsers.set(total);
+            ghostUsers.set(ghosts);
+            activeUsers.set(total - ghosts);
+
             totalTeams.set(teamRepository.count());
             totalSprints.set(sprintRepository.count());
 
@@ -100,8 +118,8 @@ public class MetricsService {
             analyzedCommits.set(commitAnalyzedCount);
             commitAnalysisPercent.set(commitCount > 0 ? (double) commitAnalyzedCount / commitCount * 100.0 : 0.0);
 
-            log.debug("Updated Business Metrics: Users={}, Ghosts={}, Teams={}, Sprints={}",
-                    totalUsers.get(), ghostUsers.get(), totalTeams.get(), totalSprints.get());
+            log.debug("Updated Business Metrics: Users={}, Ghosts={}, Active={}, Teams={}, Sprints={}",
+                    totalUsers.get(), ghostUsers.get(), activeUsers.get(), totalTeams.get(), totalSprints.get());
         } catch (Exception e) {
             log.error("Failed to update business metrics", e);
         }

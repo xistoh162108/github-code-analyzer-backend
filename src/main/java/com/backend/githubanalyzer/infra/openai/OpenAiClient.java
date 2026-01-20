@@ -19,6 +19,7 @@ public class OpenAiClient {
 
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
+    private final com.backend.githubanalyzer.global.monitor.MetricsService metricsService;
 
     @Value("${openai.api.key:}")
     private String apiKey;
@@ -44,6 +45,8 @@ public class OpenAiClient {
                 .bodyValue(requestBody)
                 .retrieve()
                 .bodyToMono(Map.class)
+                .doOnSuccess(v -> metricsService.incrementExternalRequest("openai_success"))
+                .doOnError(e -> metricsService.incrementExternalRequest("openai_error"))
                 .map(response -> {
                     try {
                         List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
