@@ -3,10 +3,13 @@ package com.backend.githubanalyzer.domain.sprint.service;
 import com.backend.githubanalyzer.domain.sprint.entity.Sprint;
 import com.backend.githubanalyzer.domain.sprint.repository.SprintRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -20,6 +23,7 @@ public class SprintService {
     private final com.backend.githubanalyzer.domain.team.service.TeamService teamService;
     private final com.backend.githubanalyzer.domain.user.repository.UserRepository userRepository;
     private final com.backend.githubanalyzer.domain.team.repository.UserRegisterTeamRepository userRegisterTeamRepository;
+    private final com.backend.githubanalyzer.global.webhook.WebhookService webhookService;
 
     public java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintTeamRankingResponse> getSprintRankings(
             String sprintId) {
@@ -298,7 +302,16 @@ public class SprintService {
 
         if (approve) {
             reg.setStatus("APPROVED");
-            // Auto-save by transaction
+            // Trigger Webhook
+            try {
+                if (reg.getTeam() != null && reg.getRepository() != null) {
+                    webhookService.sendTeamRepoUrl(reg.getTeam().getName(), reg.getRepository().getRepoUrl());
+                }
+            } catch (Exception e) {
+                // We don't want to fail the transaction just because the webhook failed
+                // WebhookService already logs internal errors, but we log here too for context
+                log.error("Failed to trigger webhook during sprint registration approval: {}", e.getMessage());
+            }
         } else {
             // Rejected -> Delete registration
             teamRegisterSprintRepository.delete(reg);

@@ -16,7 +16,6 @@ import org.springframework.security.access.AccessDeniedException;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import com.backend.githubanalyzer.domain.team.dto.TeamCreateRequest;
 import com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse;
 import com.backend.githubanalyzer.domain.user.repository.UserRepository;
 

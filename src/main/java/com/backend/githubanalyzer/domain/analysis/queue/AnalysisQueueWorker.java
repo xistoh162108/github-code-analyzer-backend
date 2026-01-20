@@ -27,11 +27,6 @@ public class AnalysisQueueWorker {
     @jakarta.annotation.PostConstruct
     public void init() {
         log.info("AnalysisQueueWorker initialized. Polling Redis queue: {}", ANALYSIS_QUEUE_KEY);
-        // Register Queue Size Gauge
-        metricsService.registerQueueSize("analysis_queue", () -> {
-            Long size = redisTemplate.opsForList().size(ANALYSIS_QUEUE_KEY);
-            return size != null ? size : 0;
-        });
     }
 
     @Scheduled(fixedDelay = 2000) // Poll every 2 seconds to utilize OpenAI limit safely (approx 30 RPM)
