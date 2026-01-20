@@ -85,7 +85,7 @@ management:
       application: spring-study-backend
 
 app:
-  frontend-url: ${FRONTEND_URL:http://localhost:5175}
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
   backend-url: ${BACKEND_URL:http://localhost:8080}
 
 
