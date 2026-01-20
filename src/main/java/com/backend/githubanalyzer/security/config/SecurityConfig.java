@@ -72,6 +72,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/search/**").permitAll()
                 .requestMatchers("/api/rankings/**").permitAll()
                 .requestMatchers("/api/sprints/**").permitAll()
+                .requestMatchers("/auth/callback").permitAll() // Added to permit frontend callback
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/repos/**").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/teams/**").permitAll()
                 .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
