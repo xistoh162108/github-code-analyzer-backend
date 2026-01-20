@@ -32,10 +32,6 @@ spring:
           github:
             client-id: ${GITHUB_CLIENT_ID:Iv23lickmaPy9lxTmt04}
             client-secret: ${GITHUB_CLIENT_SECRET:d93c3d36b7f3413f9a690fcd15127a22663d0691}
-            scope:
-              - read:user
-              - user:email
-              - repo
 
 jwt:
   secret: "2/892JwfoycUtzSgm/QrCVaWgyjT2SpfOL1xv9yDA5s3hLFU7vdU+TgNdarMt+ulkq9cOJ/LLgex39mygsk94Q=="
