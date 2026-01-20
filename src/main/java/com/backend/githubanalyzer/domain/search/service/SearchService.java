@@ -8,7 +8,6 @@ import com.backend.githubanalyzer.domain.sprint.repository.SprintRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.backend.githubanalyzer.domain.commit.entity.Commit;
 
 import java.util.stream.Collectors;
 
@@ -25,8 +24,12 @@ public class SearchService {
         public UnifiedSearchResponse search(String query, String type) {
                 UnifiedSearchResponse.UnifiedSearchResponseBuilder builder = UnifiedSearchResponse.builder();
 
+                System.out.println("[SearchService] Querying for: " + query + " (type: " + type + ")");
+
                 if (type == null || type.equals("ALL") || type.equals("USER")) {
-                        builder.users(userRepository.findAllByUsernameContainingIgnoreCase(query).stream()
+                        var users = userRepository.findAllByUsernameContainingIgnoreCase(query);
+                        System.out.println("[SearchService] Found " + users.size() + " users");
+                        builder.users(users.stream()
                                         .map(u -> UnifiedSearchResponse.UserSearchResult.builder()
                                                         .id(u.getId())
                                                         .username(u.getUsername())
@@ -35,8 +38,10 @@ public class SearchService {
                                         .collect(Collectors.toList()));
                 }
 
-                if (type == null || type.equals("ALL") || type.equals("REPO")) {
-                        builder.repositories(repoRepository.findAllByReponameContainingIgnoreCase(query).stream()
+                if (type == null || type.equals("ALL") || type.equals("REPO") || type.equals("REPOSITORY")) {
+                        var repos = repoRepository.findAllByReponameContainingIgnoreCase(query);
+                        System.out.println("[SearchService] Found " + repos.size() + " repositories");
+                        builder.repositories(repos.stream()
                                         .map(r -> UnifiedSearchResponse.RepoSearchResult.builder()
                                                         .id(r.getId())
                                                         .reponame(r.getReponame())

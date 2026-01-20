@@ -90,7 +90,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                 String redirectUrl = frontendUrl + "/auth/callback?accessToken=" + token.getAccessToken()
                                 + "&refreshToken=" + token.getRefreshToken();
 
-                log.info("Redirecting to frontend: {}", redirectUrl);
+                log.info("[OAuth2Success] Redirecting to frontend: {}", redirectUrl);
                 response.sendRedirect(redirectUrl);
         }
 }

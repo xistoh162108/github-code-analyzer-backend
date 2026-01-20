@@ -20,6 +20,10 @@ public class SwaggerConfig {
                 String loginUrl = backendUrl + "/oauth2/authorization/github";
 
                 return new OpenAPI()
+                                .addServersItem(new io.swagger.v3.oas.models.servers.Server().url(backendUrl)
+                                                .description("Configured Server"))
+                                .addServersItem(new io.swagger.v3.oas.models.servers.Server().url("/")
+                                                .description("Current Host"))
                                 .info(new Info()
                                                 .title("GitHub Analyzer API")
                                                 .description("### GitHub Login URL\n" +

@@ -2,6 +2,7 @@ package com.backend.githubanalyzer.security.config;
 
 import com.backend.githubanalyzer.security.jwt.JwtAuthenticationFilter;
 import com.backend.githubanalyzer.security.oauth.OAuth2LoginSuccessHandler;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -39,17 +40,12 @@ public class SecurityConfig {
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        // Allow production domain, potential Vercel/Netlify previews, and local
-        // development
-        config.setAllowedOrigins(List.of(
-                frontendUrl,
-                "https://sprintgit.com",
-                "http://localhost:3000",
-                "http://localhost:5173",
-                "http://localhost:5175"));
+        // Use setAllowedOriginPatterns instead of setAllowedOrigins to support wildcard
+        // with allowCredentials
+        config.setAllowedOriginPatterns(List.of("*"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("Set-Cookie"));
+        config.setExposedHeaders(List.of("Set-Cookie", "Authorization"));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
@@ -61,7 +57,12 @@ public class SecurityConfig {
 
         http.httpBasic(AbstractHttpConfigurer::disable)
                 .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(e -> e.authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"status\":\"error\",\"message\":\"Unauthorized\"}");
+                }))
                 .formLogin(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable);
 
@@ -73,6 +74,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/rankings/**").permitAll()
                 .requestMatchers("/api/sprints/**").permitAll()
                 .requestMatchers("/auth/callback").permitAll() // Added to permit frontend callback
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/users/*/profile").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/repos/**").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/teams/**").permitAll()
                 .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
