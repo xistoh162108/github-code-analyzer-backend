@@ -24,6 +24,8 @@ public interface CommitRepository extends JpaRepository<Commit, CommitId> {
 
         java.util.List<Commit> findAllById_CommitShaAndRepositoryId(String commitSha, String repoId);
 
+        boolean existsById_CommitSha(String commitSha);
+
         List<Commit> findAllByRepositoryIdAndId_BranchName(String repoId, String branchName);
 
         List<Commit> findAllByRepositoryIdOrderByCommittedAtDesc(String repoId);

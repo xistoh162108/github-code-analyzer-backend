@@ -26,6 +26,8 @@ public class GithubSyncService {
     private final GithubPersistenceService githubPersistenceService;
     private final com.backend.githubanalyzer.domain.user.service.UserService userService;
     private final GithubAppService githubAppService;
+    private final com.backend.githubanalyzer.domain.sync.queue.CommitSyncQueueProducer syncQueueProducer;
+    private final com.backend.githubanalyzer.domain.commit.repository.CommitRepository commitRepository;
 
     public User findUserByGithubId(String githubId) {
         return userService.findByGithubId(githubId);
@@ -82,19 +84,36 @@ public class GithubSyncService {
                     log.info("[Sync Progress: {}/{}] Processing repository: {}/{}",
                             (i + 1), repos.size(), repoDto.getOwner().getLogin(), repoDto.getName());
 
-                    // Determine actual owner of the repo using numeric ID
                     User repoOwner = userService.getOrCreateGhostUser(
                             String.valueOf(repoDto.getOwner().getId()),
                             repoDto.getOwner().getLogin(),
                             repoDto.getOwner().getAvatarUrl());
                     GithubRepository repository = githubPersistenceService.saveRepository(repoOwner, repoDto);
+
+                    // --- Incremental Sync V2: Skip repo if not pushed recently ---
+                    if (repository.getLastSyncAt() != null && repoDto.getPushedAt() != null) {
+                        if (!repoDto.getPushedAt().isAfter(repository.getLastSyncAt())) {
+                            log.info("Skipping repository {}/{} - No new pushes since last sync ({})",
+                                    repoDto.getOwner().getLogin(), repoDto.getName(), repository.getLastSyncAt());
+                            continue;
+                        }
+                    }
+
                     repository.setSyncStatus("RUNNING");
                     githubPersistenceService.saveContribution(user, repository, ContributionType.COLLABORATOR);
 
                     syncCommitsForRepo(repoDto.getOwner().getLogin(), repository, repoOwner, accessToken);
 
                     repository.setSyncStatus("COMPLETED");
-                    repository.setLastSyncAt(LocalDateTime.now());
+
+                    // Update lastSyncAt to the latest push time if available
+                    if (repoDto.getPushedAt() != null) {
+                        repository.setLastSyncAt(repoDto.getPushedAt());
+                    } else {
+                        repository.setLastSyncAt(LocalDateTime.now());
+                    }
+
+                    githubPersistenceService.save(repository);
                     githubPersistenceService.refreshRepoStats(repository);
                 } catch (Exception e) {
                     log.error("Failed to sync repository {}/{} : {}",
@@ -213,14 +232,25 @@ public class GithubSyncService {
                 repository.getReponame());
 
         for (GithubCommitResponse commitDto : commits) {
-            GithubCommitResponse detailedDto = githubApiService.fetchCommitDetail(
-                    owner,
-                    repository.getReponame(),
-                    commitDto.getSha(),
-                    accessToken).block();
+            String sha = commitDto.getSha();
+            if (commitRepository.existsById_CommitSha(sha)) {
+                continue;
+            }
 
-            if (detailedDto != null) {
-                githubPersistenceService.saveCommit(repository, repositoryOwner, branchName, detailedDto);
+            try {
+                com.backend.githubanalyzer.domain.sync.queue.CommitSyncJobRequest syncJob = com.backend.githubanalyzer.domain.sync.queue.CommitSyncJobRequest
+                        .builder()
+                        .owner(owner)
+                        .repoName(repository.getReponame())
+                        .sha(sha)
+                        .branchName(branchName)
+                        .userId(repositoryOwner.getId())
+                        .repositoryId(repository.getId())
+                        .accessToken(accessToken)
+                        .build();
+                syncQueueProducer.pushJob(syncJob);
+            } catch (Exception e) {
+                log.error("Failed to queue sync job for commit {}: {}", sha, e.getMessage());
             }
         }
     }
@@ -275,16 +305,25 @@ public class GithubSyncService {
             List<GithubCommitResponse> commits = commitResponse.data();
             log.info("Found {} new commits for branch: {} in repo: {}", commits.size(), branch.getName(), repoName);
             for (GithubCommitResponse commitDto : commits) {
-                // Determine if detailed fetch is needed (Phase 2 will optimize this)
-                log.info("Fetching commit details (diff) for SHA: {}", commitDto.getSha());
-                GithubCommitResponse detailedDto = githubApiService.fetchCommitDetail(
-                        owner,
-                        repository.getReponame(),
-                        commitDto.getSha(),
-                        accessToken).block();
+                String sha = commitDto.getSha();
+                if (commitRepository.existsById_CommitSha(sha)) {
+                    continue;
+                }
 
-                if (detailedDto != null) {
-                    githubPersistenceService.saveCommit(repository, repositoryOwner, branch.getName(), detailedDto);
+                try {
+                    com.backend.githubanalyzer.domain.sync.queue.CommitSyncJobRequest syncJob = com.backend.githubanalyzer.domain.sync.queue.CommitSyncJobRequest
+                            .builder()
+                            .owner(owner)
+                            .repoName(repository.getReponame())
+                            .sha(sha)
+                            .branchName(branch.getName())
+                            .userId(repositoryOwner.getId())
+                            .repositoryId(repository.getId())
+                            .accessToken(accessToken)
+                            .build();
+                    syncQueueProducer.pushJob(syncJob);
+                } catch (Exception e) {
+                    log.error("Failed to queue sync job for commit {}: {}", sha, e.getMessage());
                 }
             }
         }
