@@ -53,4 +53,25 @@ public class AuthController {
         }
         return ResponseEntity.badRequest().body(ApiResponse.error("인증되지 않은 사용자입니다."));
     }
+
+    @GetMapping("/auth/callback")
+    @io.swagger.v3.oas.annotations.Hidden
+    public java.util.Map<String, Object> authCallback(
+            @RequestParam String accessToken,
+            @RequestParam String refreshToken) {
+
+        java.util.Map<String, Object> response = new java.util.HashMap<>();
+        response.put("status", "success");
+        response.put("message", "GitHub Login Successful! (Demo Mode)");
+
+        java.util.Map<String, String> tokens = new java.util.HashMap<>();
+        tokens.put("accessToken", accessToken);
+        tokens.put("refreshToken", refreshToken);
+
+        response.put("data", tokens);
+        response.put("instruction",
+                "Copy the accessToken and use it in the Authorization header (Bearer <token>) for API calls.");
+
+        return response;
+    }
 }
