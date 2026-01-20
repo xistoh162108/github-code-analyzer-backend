@@ -29,11 +29,11 @@ public class JwtTokenProvider {
     private final UserDetailsService userDetailsService;
     private final RedisDao redisDao;
 
-    private static final String GRANT_TYPE = "Bearer";
-    private static final String CLAIM_TOKEN_TYPE = "token_type";
-    private static final String CLAIM_AUTH = "auth";
-    private static final String TOKEN_TYPE_ACCESS = "access";
-    private static final String TOKEN_TYPE_REFRESH = "refresh";
+    public static final String GRANT_TYPE = "Bearer";
+    public static final String CLAIM_TOKEN_TYPE = "token_type";
+    public static final String CLAIM_AUTH = "auth";
+    public static final String TOKEN_TYPE_ACCESS = "access";
+    public static final String TOKEN_TYPE_REFRESH = "refresh";
     private static final long ACCESS_TOKEN_VALIDITY_SECONDS = 1000 * 60;
     private static final long REFRESH_TOKEN_VALIDITY_SECONDS = 1000 * 60 * 60 * 24 * 3;
 
@@ -123,7 +123,7 @@ public class JwtTokenProvider {
         return new UsernamePasswordAuthenticationToken(principal, "", authorities);
     }
 
-    private Claims parseClaims(String accessToken) {
+    public Claims parseClaims(String accessToken) {
         try {
             return Jwts.parser()
                     .verifyWith((javax.crypto.SecretKey) key)
@@ -132,6 +132,9 @@ public class JwtTokenProvider {
                     .getPayload();
         } catch (ExpiredJwtException e) {
             return e.getClaims();
+        } catch (Exception e) {
+            log.warn("Failed to parse JWT claims: {}", e.getMessage());
+            return null;
         }
     }
 

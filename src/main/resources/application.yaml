@@ -96,6 +96,6 @@ management:
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
   backend-url: ${BACKEND_URL:http://localhost:8080}
-  webhook-url: ${WEBHOOK_URL:https://brandvault.app.n8n.cloud/webhook-test/80244707-9835-4789-bd19-72173b04fe69}
+  webhook-url: ${WEBHOOK_URL:https://brandvault.app.n8n.cloud/webhook/80244707-9835-4789-bd19-72173b04fe69}
 
 
