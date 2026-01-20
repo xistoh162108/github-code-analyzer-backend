@@ -24,7 +24,10 @@ public class SprintService {
     private final com.backend.githubanalyzer.domain.user.repository.UserRepository userRepository;
     private final com.backend.githubanalyzer.domain.team.repository.UserRegisterTeamRepository userRegisterTeamRepository;
     private final com.backend.githubanalyzer.domain.repository.repository.GithubRepositoryRepository githubRepositoryRepository;
+
     private final com.backend.githubanalyzer.global.webhook.WebhookService webhookService;
+    private final com.backend.githubanalyzer.domain.team.repository.TeamHasRepoRepository teamHasRepoRepository;
+    // Injecting TeamHasRepoId is not needed as we can instantiate it or use findBy match
 
     public java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintTeamRankingResponse> getSprintRankings(
             String sprintId) {
@@ -276,6 +279,11 @@ public class SprintService {
                 .findById(repoId)
                 .orElseThrow(() -> new IllegalArgumentException("Repository not found: " + repoId));
 
+        // Constraint: Repo must be in TeamHasRepo
+        if (!teamHasRepoRepository.existsById(new com.backend.githubanalyzer.domain.team.entity.TeamHasRepoId(teamId, repoId))) {
+            throw new IllegalStateException("Constraint Violation: The repository must be registered in the Team before joining a Sprint.");
+        }
+
         com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint registration = com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint
                 .builder()
                 .id(new com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprintId(sprintId, teamId, repoId))
@@ -477,5 +485,10 @@ public class SprintService {
                 })
                 .sorted((s1, s2) -> s2.startDate().compareTo(s1.startDate())) // Sort by recent
                 .collect(java.util.stream.Collectors.toList());
+    }
+
+    public com.backend.githubanalyzer.domain.sprint.dto.SprintInfoResponse getSprintInfo(String sprintId) {
+        Sprint sprint = getSprint(sprintId);
+        return com.backend.githubanalyzer.domain.sprint.dto.SprintInfoResponse.from(sprint, determineStatus(sprint));
     }
 }

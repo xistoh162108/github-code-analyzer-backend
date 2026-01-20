@@ -103,6 +103,13 @@ public class SprintController {
                 .success(sprintService.banTeam(sprintId, teamId, currentUser)));
     }
 
+    @io.swagger.v3.oas.annotations.Operation(summary = "Get Basic Sprint Info (스프린트 정보 조회)", description = "ID로 스프린트의 기본 정보를 조회합니다. (비공개 스프린트 존재 여부 확인용)")
+    @GetMapping("/{sprintId}/info")
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.domain.sprint.dto.SprintInfoResponse>> getSprintInfo(
+            @PathVariable String sprintId) {
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(sprintService.getSprintInfo(sprintId)));
+    }
+
     private User getCurrentUser() {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByUsername(username)

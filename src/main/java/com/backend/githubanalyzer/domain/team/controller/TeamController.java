@@ -107,6 +107,46 @@ public class TeamController {
         return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(null));
     }
 
+    // 8. 내가 팀장인 팀 목록 조회
+    @io.swagger.v3.oas.annotations.Operation(summary = "Get Teams I Lead (내가 팀장인 팀 조회)", description = "내가 팀장으로 있는 팀 목록을 조회합니다.")
+    @GetMapping("/leader")
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<List<com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse>>> getTeamsLeaderOf() {
+        User currentUser = getCurrentUser();
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(
+                teamService.getTeamsLeaderOf(currentUser)));
+    }
+
+    // 9. 팀에 등록 가능한 레포지토리 조회 (Leader Only)
+    @io.swagger.v3.oas.annotations.Operation(summary = "Get Available Repos (등록 가능 레포지토리 조회)", description = "팀에 등록 가능한(팀장 및 팀원 소유) 레포지토리 목록을 조회합니다. (Leader Only)")
+    @GetMapping("/{teamId}/repos/available")
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<List<com.backend.githubanalyzer.domain.repository.dto.GithubRepositoryResponse>>> getAvailableRepos(
+            @PathVariable String teamId) {
+        User currentUser = getCurrentUser();
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(
+                teamService.getAvailableReposForTeam(teamId, currentUser)));
+    }
+
+    // 10. 팀에 레포지토리 등록 (Leader Only)
+    @io.swagger.v3.oas.annotations.Operation(summary = "Add Repo to Team (팀에 레포지토리 등록)", description = "팀에 레포지토리를 등록합니다. (Leader Only)")
+    @PostMapping("/{teamId}/repos")
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<Void>> addRepoToTeam(
+            @PathVariable String teamId,
+            @RequestBody com.backend.githubanalyzer.domain.repository.dto.RepoAddRequest request) {
+        User currentUser = getCurrentUser();
+        teamService.addRepoToTeam(teamId, request.repoId(), currentUser);
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(null));
+    }
+
+    // 11. 팀 소유 레포지토리 조회 (Visibility checked)
+    @io.swagger.v3.oas.annotations.Operation(summary = "Get Team Repos (팀 레포지토리 조회)", description = "팀에 등록된 레포지토리 목록을 조회합니다.")
+    @GetMapping("/{teamId}/repos")
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<List<com.backend.githubanalyzer.domain.repository.dto.GithubRepositoryResponse>>> getTeamRepos(
+            @PathVariable String teamId) {
+        User currentUser = getCurrentUser();
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(
+                teamService.getTeamRepos(teamId, currentUser)));
+    }
+
     private User getCurrentUser() {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByUsername(username)

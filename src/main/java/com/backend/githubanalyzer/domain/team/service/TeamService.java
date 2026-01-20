@@ -30,6 +30,7 @@ public class TeamService {
     private final UserRepository userRepository;
     private final com.backend.githubanalyzer.domain.commit.repository.CommitRepository commitRepository;
     private final com.backend.githubanalyzer.domain.team.repository.TeamRegisterSprintRepository teamRegisterSprintRepository;
+    private final com.backend.githubanalyzer.domain.repository.repository.GithubRepositoryRepository githubRepositoryRepository;
 
     @Transactional
     public void addMemberToTeam(Team team, User user, String role) {
@@ -81,13 +82,6 @@ public class TeamService {
 
             List<User> contributors = commitRepository.findDistinctAuthorByRepositoryId(repo.getId());
             for (User contributor : contributors) {
-                // 이미 멤버인지 확인하는 로직은 addMemberToTeam 내부 검사나 호출 전 검사로 처리 가능하지만
-                // addMemberToTeam이 안전하게 처리하도록 구현되어 있는지 확인 후 호출
-                // 여기서는 간단히 호출 (Service 내부 로직에 맡김 - addMemberToTeam 검토 필요)
-                // 만약 addMemberToTeam이 중복 체크를 안한다면 여기서 exists 체크를 해야함.
-
-                // 현재 addMemberToTeam은 role upgrade 로직만 있고 중복 insert 방지가 약할 수 있으므로
-                // 안전하게 존재 여부 확인 후 호출
                 if (!isUserInTeam(team.getId(), contributor.getId())) {
                     addMemberToTeam(team, contributor, "CONTRIBUTOR");
                 }
@@ -99,6 +93,21 @@ public class TeamService {
     public void addRepoToTeam(String teamId, GithubRepository repo) {
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new IllegalArgumentException("Team not found for ID: " + teamId));
+        addRepoToTeam(team, repo);
+    }
+
+    @Transactional
+    public void addRepoToTeam(String teamId, String repoId, User user) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("Team not found for ID: " + teamId));
+        
+        if (!team.getLeader().getId().equals(user.getId())) {
+             throw new AccessDeniedException("Only the Team Leader can add repositories to the team.");
+        }
+
+        GithubRepository repo = githubRepositoryRepository.findById(repoId)
+                .orElseThrow(() -> new IllegalArgumentException("Repository not found for ID: " + repoId));
+        
         addRepoToTeam(team, repo);
     }
 
@@ -371,5 +380,94 @@ public class TeamService {
                     return com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse.from(team);
                 })
                 .collect(Collectors.toList());
+    }
+
+    // New: 팀장이 관리하는 팀 조회
+    @Transactional(readOnly = true)
+    public List<com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse> getTeamsLeaderOf(User user) {
+        List<Team> teams = teamRepository.findAllByLeaderId(user.getId());
+        return teams.stream()
+                .map(com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse::from)
+                .collect(Collectors.toList());
+    }
+
+    // New: 팀에 추가 가능한 레포지토리 목록 조회 (Leader Only)
+    @Transactional(readOnly = true)
+    public List<com.backend.githubanalyzer.domain.repository.dto.GithubRepositoryResponse> getAvailableReposForTeam(String teamId, User user) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("Team not found"));
+
+        if (!team.getLeader().getId().equals(user.getId())) {
+            throw new AccessDeniedException("Only the Team Leader can view available repositories to add.");
+        }
+
+        // 1. Get Repos owned by Leader
+        List<GithubRepository> leaderRepos = githubRepositoryRepository.findAllByOwnerId(user.getId());
+
+        // 2. Get Repos owned by Members
+        List<UserRegisterTeam> members = userRegisterTeamRepository.findByTeamId(teamId);
+        List<Long> memberIds = members.stream()
+                .map(m -> m.getUser().getId())
+                .collect(Collectors.toList());
+        
+        // This could be optimized with a custom query findAllByOwnerIdIn(List<Long> ids)
+        // For now, we iterate or assume list isn't huge. Better: use stream to collect all.
+        // Or adding findAllByOwnerIdIn to repo. Let's stick to simple loop properly or add method later if performance issue.
+        // Actually, let's just fetch all member repos in one go if possible, or loop. With modest team size, loop is fine??
+        // A better approach: 
+        List<GithubRepository> memberRepos = new java.util.ArrayList<>();
+        for(Long mid : memberIds) {
+             memberRepos.addAll(githubRepositoryRepository.findAllByOwnerId(mid));
+        }
+
+        // 3. Combine
+        java.util.Set<GithubRepository> allCandidates = new java.util.HashSet<>();
+        allCandidates.addAll(leaderRepos);
+        allCandidates.addAll(memberRepos);
+
+        // 4. Filter out already added repos
+        List<String> existingRepoIds = teamHasRepoRepository.findByTeamId(teamId).stream()
+                .map(m -> m.getRepository().getId())
+                .collect(Collectors.toList());
+        
+        return allCandidates.stream()
+                .filter(r -> !existingRepoIds.contains(r.getId()))
+                .map(this::toRepoDto)
+                .collect(Collectors.toList());
+    }
+
+    // New: 팀 레포지토리 조회
+    @Transactional(readOnly = true)
+    public List<com.backend.githubanalyzer.domain.repository.dto.GithubRepositoryResponse> getTeamRepos(String teamId, User user) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("Team not found"));
+
+        boolean isMember = isUserInTeam(teamId, user.getId());
+        boolean isLeader = team.getLeader().getId().equals(user.getId());
+
+        if (!team.getIsPublic() && !isMember && !isLeader) {
+             throw new AccessDeniedException("You do not have permission to view repositories of this private team.");
+        }
+
+        List<TeamHasRepo> mappings = teamHasRepoRepository.findByTeamId(teamId);
+        return mappings.stream()
+                .map(m -> toRepoDto(m.getRepository()))
+                .collect(Collectors.toList());
+    }
+
+    private com.backend.githubanalyzer.domain.repository.dto.GithubRepositoryResponse toRepoDto(GithubRepository repository) {
+        return com.backend.githubanalyzer.domain.repository.dto.GithubRepositoryResponse.builder()
+                .id(repository.getId())
+                .reponame(repository.getReponame())
+                .repoUrl(repository.getRepoUrl())
+                .description(repository.getDescription())
+                .language(repository.getLanguage())
+                .size(repository.getSize())
+                .stars(repository.getStars())
+                .createdAt(repository.getCreatedAt())
+                .updatedAt(repository.getUpdatedAt())
+                .pushedAt(repository.getPushedAt())
+                .lastSyncAt(repository.getLastSyncAt())
+                .build();
     }
 }
