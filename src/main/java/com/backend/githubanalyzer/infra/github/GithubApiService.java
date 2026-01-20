@@ -30,7 +30,19 @@ public class GithubApiService {
 
     public GithubApiService(WebClient.Builder webClientBuilder,
             com.backend.githubanalyzer.global.monitor.MetricsService metricsService) {
-        this.webClient = webClientBuilder.baseUrl("https://api.github.com").build();
+        this.webClient = webClientBuilder.baseUrl("https://api.github.com")
+                .filter((request, next) -> next.exchange(request).doOnNext(response -> {
+                    try {
+                        String limit = response.headers().asHttpHeaders().getFirst("X-RateLimit-Limit");
+                        String remaining = response.headers().asHttpHeaders().getFirst("X-RateLimit-Remaining");
+                        if (limit != null && remaining != null) {
+                            metricsService.updateGithubRateLimits(Long.parseLong(limit), Long.parseLong(remaining));
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to parse GitHub rate limit headers", e);
+                    }
+                }))
+                .build();
         this.metricsService = metricsService;
     }
 

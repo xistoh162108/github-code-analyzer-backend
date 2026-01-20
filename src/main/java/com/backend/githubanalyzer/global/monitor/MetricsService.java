@@ -32,7 +32,7 @@ public class MetricsService {
     // Gauges (AtomicLongs to hold value)
     private final AtomicLong totalUsers = new AtomicLong(0);
     private final AtomicLong ghostUsers = new AtomicLong(0);
-    private final AtomicLong activeUsers = new AtomicLong(0); // Non-ghost users
+    private final AtomicLong activeUsers = new AtomicLong(0);
     private final AtomicLong totalTeams = new AtomicLong(0);
     private final AtomicLong totalSprints = new AtomicLong(0);
 
@@ -45,32 +45,38 @@ public class MetricsService {
     private final AtomicLong analyzedCommits = new AtomicLong(0);
     private final AtomicReference<Double> commitAnalysisPercent = new AtomicReference<>(0.0);
 
+    // Queue Sizes
+    private final AtomicLong syncQueueSize = new AtomicLong(0);
+    private final AtomicLong analysisQueueSize = new AtomicLong(0);
+
+    // GitHub Rate Limits
+    private final AtomicLong githubRateLimit = new AtomicLong(0);
+    private final AtomicLong githubRateRemaining = new AtomicLong(0);
+
     // Initializer to register gauges
     @jakarta.annotation.PostConstruct
     public void init() {
-        meterRegistry.gauge("business.users.total", totalUsers);
+        meterRegistry.gauge("business.users", totalUsers);
         meterRegistry.gauge("business.users.ghost", ghostUsers);
         meterRegistry.gauge("business.users.active", activeUsers);
-        meterRegistry.gauge("business.teams.total", totalTeams);
-        meterRegistry.gauge("business.sprints.total", totalSprints);
+        meterRegistry.gauge("business.teams", totalTeams);
+        meterRegistry.gauge("business.sprints", totalSprints);
 
-        meterRegistry.gauge("analysis.repos.total", totalRepos);
+        meterRegistry.gauge("analysis.repos", totalRepos);
         meterRegistry.gauge("analysis.repos.analyzed", analyzedRepos);
         meterRegistry.gauge("analysis.repos.percentage", repoAnalysisPercent, AtomicReference::get);
 
-        meterRegistry.gauge("analysis.commits.total", totalCommits);
+        meterRegistry.gauge("analysis.commits", totalCommits);
         meterRegistry.gauge("analysis.commits.completed", analyzedCommits);
         meterRegistry.gauge("analysis.commits.percentage", commitAnalysisPercent, AtomicReference::get);
 
-        // Register Redis Queue Sizes
-        registerQueueSize("github:sync:commit_queue", () -> {
-            Long size = redisTemplate.opsForList().size("github:sync:commit_queue");
-            return size != null ? size : 0;
-        });
-        registerQueueSize("github:analysis:queue", () -> {
-            Long size = redisTemplate.opsForList().size("github:analysis:queue");
-            return size != null ? size : 0;
-        });
+        // Queue Sizes with simple tags
+        meterRegistry.gauge("queue.size", Tags.of("queue", "sync"), syncQueueSize);
+        meterRegistry.gauge("queue.size", Tags.of("queue", "analysis"), analysisQueueSize);
+
+        // GitHub Rate Limits
+        meterRegistry.gauge("github.rate.limit", githubRateLimit);
+        meterRegistry.gauge("github.rate.remaining", githubRateRemaining);
     }
 
     // Custom Counter for External APIs
@@ -78,11 +84,9 @@ public class MetricsService {
         meterRegistry.counter("external.api.requests", "target", target).increment();
     }
 
-    // Helper to record Job duration
-    public void registerQueueSize(String queueName, java.util.function.Supplier<Number> sizeSupplier) {
-        io.micrometer.core.instrument.Gauge.builder("queue.size", sizeSupplier, s -> s.get().doubleValue())
-                .tag("queue", queueName)
-                .register(meterRegistry);
+    public void updateGithubRateLimits(long limit, long remaining) {
+        githubRateLimit.set(limit);
+        githubRateRemaining.set(remaining);
     }
 
     // Helper to record Job duration
@@ -118,8 +122,16 @@ public class MetricsService {
             analyzedCommits.set(commitAnalyzedCount);
             commitAnalysisPercent.set(commitCount > 0 ? (double) commitAnalyzedCount / commitCount * 100.0 : 0.0);
 
-            log.debug("Updated Business Metrics: Users={}, Ghosts={}, Active={}, Teams={}, Sprints={}",
-                    totalUsers.get(), ghostUsers.get(), activeUsers.get(), totalTeams.get(), totalSprints.get());
+            // Queue Sizes
+            Long syncSize = redisTemplate.opsForList().size("github:sync:commit_queue");
+            syncQueueSize.set(syncSize != null ? syncSize : 0);
+
+            Long analysisSize = redisTemplate.opsForList().size("github:analysis:queue");
+            analysisQueueSize.set(analysisSize != null ? analysisSize : 0);
+
+            log.debug("Updated Business Metrics: Users={}, Teams={}, Sprints={}, SyncQueue={}, AnalysisQueue={}",
+                    totalUsers.get(), totalTeams.get(), totalSprints.get(), syncQueueSize.get(),
+                    analysisQueueSize.get());
         } catch (Exception e) {
             log.error("Failed to update business metrics", e);
         }

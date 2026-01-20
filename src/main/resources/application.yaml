@@ -86,6 +86,10 @@ management:
     prometheus:
       enabled: true
   metrics:
+    web:
+      server:
+        request:
+          ignore-patterns: /actuator/**
     tags:
       application: spring-study-backend
 

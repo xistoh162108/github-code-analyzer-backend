@@ -53,7 +53,7 @@
             "pluginVersion": "10.0.0",
             "targets": [
                 {
-                    "expr": "business_users_total",
+                    "expr": "business_users",
                     "refId": "A"
                 }
             ],
@@ -129,7 +129,7 @@
             "pluginVersion": "10.0.0",
             "targets": [
                 {
-                    "expr": "business_teams_total",
+                    "expr": "business_teams",
                     "refId": "A"
                 }
             ],
@@ -167,7 +167,7 @@
             "pluginVersion": "10.0.0",
             "targets": [
                 {
-                    "expr": "business_sprints_total",
+                    "expr": "business_sprints",
                     "refId": "A"
                 }
             ],
@@ -205,11 +205,11 @@
             "pluginVersion": "10.0.0",
             "targets": [
                 {
-                    "expr": "queue_size{queue=\"analysis_queue\"}",
+                    "expr": "queue_size{queue=\"analysis\"}",
                     "refId": "A"
                 }
             ],
-            "title": "Queue Depth",
+            "title": "Analysis Queue",
             "type": "stat"
         },
         {
@@ -295,7 +295,7 @@
             },
             "targets": [
                 {
-                    "expr": "sum by (uri) (rate(http_server_requests_seconds_count[1m]))",
+                    "expr": "sum by (uri) (rate(http_server_requests_seconds_count{uri!~\"/actuator/.*\"}[1m]))",
                     "legendFormat": "{{uri}}",
                     "refId": "A"
                 }
@@ -356,7 +356,7 @@
             "id": 11,
             "targets": [
                 {
-                    "expr": "sum by (uri) (http_server_requests_seconds_count)",
+                    "expr": "sum by (uri) (http_server_requests_seconds_count{uri!~\"/actuator/.*\"})",
                     "legendFormat": "{{uri}}",
                     "refId": "A"
                 }
@@ -375,13 +375,241 @@
             "id": 12,
             "targets": [
                 {
-                    "expr": "sum by (uri) (increase(http_server_requests_seconds_count[1h]))",
+                    "expr": "sum by (uri) (increase(http_server_requests_seconds_count{uri!~\"/actuator/.*\"}[1h]))",
                     "legendFormat": "{{uri}}",
                     "refId": "A"
                 }
             ],
             "title": "API Traffic Analysis (Requests per Hour)",
             "type": "timeseries"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "noValue": "0"
+                }
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 0,
+                "y": 28
+            },
+            "id": 13,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "expr": "analysis_repos_analyzed",
+                    "refId": "A"
+                }
+            ],
+            "title": "Analyzed Repos",
+            "type": "stat"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "noValue": "0"
+                }
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 4,
+                "y": 28
+            },
+            "id": 14,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "expr": "analysis_repos",
+                    "refId": "A"
+                }
+            ],
+            "title": "Total Repos",
+            "type": "stat"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "noValue": "0"
+                }
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 8,
+                "y": 28
+            },
+            "id": 15,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "expr": "analysis_commits_completed",
+                    "refId": "A"
+                }
+            ],
+            "title": "Analyzed Commits",
+            "type": "stat"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "noValue": "0"
+                }
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 12,
+                "y": 28
+            },
+            "id": 16,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "expr": "analysis_commits",
+                    "refId": "A"
+                }
+            ],
+            "title": "Total Commits",
+            "type": "stat"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "noValue": "0"
+                }
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 16,
+                "y": 28
+            },
+            "id": 17,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "expr": "github_rate_remaining",
+                    "refId": "A"
+                }
+            ],
+            "title": "Github Remaining",
+            "type": "stat"
+        },
+        {
+            "datasource": "Prometheus",
+            "fieldConfig": {
+                "defaults": {
+                    "noValue": "0"
+                }
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 4,
+                "x": 20,
+                "y": 28
+            },
+            "id": 18,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "10.0.0",
+            "targets": [
+                {
+                    "expr": "github_rate_limit",
+                    "refId": "A"
+                }
+            ],
+            "title": "Github Limit",
+            "type": "stat"
         }
     ],
     "refresh": "5s",
