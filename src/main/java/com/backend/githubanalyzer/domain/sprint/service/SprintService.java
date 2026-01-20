@@ -23,6 +23,7 @@ public class SprintService {
     private final com.backend.githubanalyzer.domain.team.service.TeamService teamService;
     private final com.backend.githubanalyzer.domain.user.repository.UserRepository userRepository;
     private final com.backend.githubanalyzer.domain.team.repository.UserRegisterTeamRepository userRegisterTeamRepository;
+    private final com.backend.githubanalyzer.domain.repository.repository.GithubRepositoryRepository githubRepositoryRepository;
     private final com.backend.githubanalyzer.global.webhook.WebhookService webhookService;
 
     public java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintTeamRankingResponse> getSprintRankings(
@@ -271,8 +272,9 @@ public class SprintService {
             status = "PENDING"; // Req 12: Manager approval needed
         }
 
-        com.backend.githubanalyzer.domain.repository.entity.GithubRepository repo = com.backend.githubanalyzer.domain.repository.entity.GithubRepository
-                .builder().id(repoId).build(); // Proxy
+        com.backend.githubanalyzer.domain.repository.entity.GithubRepository repo = githubRepositoryRepository
+                .findById(repoId)
+                .orElseThrow(() -> new IllegalArgumentException("Repository not found: " + repoId));
 
         com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint registration = com.backend.githubanalyzer.domain.team.entity.TeamRegisterSprint
                 .builder()
@@ -284,6 +286,18 @@ public class SprintService {
                 .build();
 
         teamRegisterSprintRepository.save(registration);
+
+        // For Public Sprints (Auto-Approved), trigger Webhook immediately
+        if ("APPROVED".equals(status)) {
+            com.backend.githubanalyzer.global.webhook.WebhookService.WebhookResult result = webhookService
+                    .sendTeamRepoUrl(team.getName(), repo.getRepoUrl());
+            return com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse.from(
+                    registration,
+                    result.url(),
+                    result.success(),
+                    result.errorMessage());
+        }
+
         return com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse.from(registration);
     }
 
@@ -305,12 +319,19 @@ public class SprintService {
             // Trigger Webhook
             try {
                 if (reg.getTeam() != null && reg.getRepository() != null) {
-                    webhookService.sendTeamRepoUrl(reg.getTeam().getName(), reg.getRepository().getRepoUrl());
+                    com.backend.githubanalyzer.global.webhook.WebhookService.WebhookResult result = webhookService
+                            .sendTeamRepoUrl(reg.getTeam().getName(), reg.getRepository().getRepoUrl());
+
+                    return com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse.from(
+                            reg,
+                            result.url(),
+                            result.success(),
+                            result.errorMessage());
                 }
             } catch (Exception e) {
-                // We don't want to fail the transaction just because the webhook failed
-                // WebhookService already logs internal errors, but we log here too for context
                 log.error("Failed to trigger webhook during sprint registration approval: {}", e.getMessage());
+                return com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse.from(reg, null, false,
+                        e.getMessage());
             }
         } else {
             // Rejected -> Delete registration

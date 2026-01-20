@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.Duration;
 import java.util.Map;
 
 @Slf4j
@@ -18,10 +19,13 @@ public class WebhookService {
     @Value("${app.webhook-url:}")
     private String webhookUrl;
 
-    public void sendTeamRepoUrl(String teamName, String repoUrl) {
+    public record WebhookResult(boolean success, String url, String errorMessage) {
+    }
+
+    public WebhookResult sendTeamRepoUrl(String teamName, String repoUrl) {
         if (webhookUrl == null || webhookUrl.isEmpty()) {
             log.warn("Webhook URL is not configured. Skipping notification for team: {}", teamName);
-            return;
+            return new WebhookResult(false, null, "Webhook URL not configured");
         }
 
         Map<String, String> payload = Map.of(
@@ -29,14 +33,19 @@ public class WebhookService {
                 "repositoryUrl", repoUrl,
                 "event", "team_sprint_registration_approved");
 
-        webClient.post()
-                .uri(webhookUrl)
-                .bodyValue(payload)
-                .retrieve()
-                .toBodilessEntity()
-                .doOnSuccess(response -> log.info("Successfully sent webhook for team: {}", teamName))
-                .doOnError(error -> log.error("Failed to send webhook for team: {}. Error: {}", teamName,
-                        error.getMessage()))
-                .subscribe(); // Fire and forget (Async)
+        try {
+            webClient.post()
+                    .uri(webhookUrl)
+                    .bodyValue(payload)
+                    .retrieve()
+                    .toBodilessEntity()
+                    .block(Duration.ofSeconds(5)); // Synchronous wait for result
+
+            log.info("Successfully sent webhook for team: {}", teamName);
+            return new WebhookResult(true, webhookUrl, null);
+        } catch (Exception e) {
+            log.error("Failed to send webhook for team: {}. Error: {}", teamName, e.getMessage());
+            return new WebhookResult(false, webhookUrl, e.getMessage());
+        }
     }
 }
