@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.*;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/auth")
 @RequiredArgsConstructor
 @Tag(name = "Authentication", description = "OAuth2 및 JWT 토큰 관리 API. (로그인: /oauth2/authorization/github)")
 public class AuthController {
@@ -23,7 +22,7 @@ public class AuthController {
     private final JwtTokenProvider jwtTokenProvider;
 
     @Operation(summary = "Refresh Token (토큰 갱신)", description = "만료된 Access Token을 Refresh Token을 통해 갱신합니다.")
-    @PostMapping("/refresh")
+    @PostMapping("/api/auth/refresh")
     public ResponseEntity<ApiResponse<JwtToken>> refresh(@RequestBody TokenRefreshRequest request) {
         String refreshToken = request.getRefreshToken();
 
@@ -37,7 +36,7 @@ public class AuthController {
     }
 
     @Operation(summary = "Logout (로그아웃)", description = "서버에서 Refresh Token을 삭제하여 로그아웃 처리합니다.")
-    @PostMapping("/logout")
+    @PostMapping("/api/auth/logout")
     public ResponseEntity<ApiResponse<Void>> logout() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.isAuthenticated()) {
