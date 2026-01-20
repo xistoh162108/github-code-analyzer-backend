@@ -31,11 +31,15 @@ public class SprintController {
         return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(response));
     }
 
-    @io.swagger.v3.oas.annotations.Operation(summary = "List Public Sprints (공개 스프린트 조회)", description = "현재 참여 가능한 공개 스프린트 목록을 조회합니다.")
+    @io.swagger.v3.oas.annotations.Operation(summary = "List Public Sprints Paginated (공개 스프린트 페이징 조회)", description = "현재 참여 가능한 공개 스프린트 목록을 페이징하여 조회합니다. (진행중 우선, 최신순)")
     @GetMapping
-    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<List<SprintResponse>>> getSprints() {
-        return ResponseEntity
-                .ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(sprintService.getPublicSprints()));
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.global.dto.PageResponse<SprintResponse>>> getSprints(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size, 
+            org.springframework.data.domain.Sort.by("isOpen").descending()
+            .and(org.springframework.data.domain.Sort.by("createdAt").descending()));
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(sprintService.getPublicSprintsPaging(pageable)));
     }
 
     @io.swagger.v3.oas.annotations.Operation(summary = "List My Sprints (내 스프린트 조회)", description = "내가 참여 중이거나 생성한 스프린트 목록을 조회합니다.")

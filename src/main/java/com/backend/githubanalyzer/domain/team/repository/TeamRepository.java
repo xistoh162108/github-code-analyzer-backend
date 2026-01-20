@@ -13,4 +13,6 @@ public interface TeamRepository extends JpaRepository<Team, String> {
     Optional<Team> findByName(String name);
 
     java.util.List<Team> findAllByLeaderId(Long leaderId);
+
+    org.springframework.data.domain.Page<Team> findByIsPublicTrue(org.springframework.data.domain.Pageable pageable);
 }

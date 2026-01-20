@@ -31,6 +31,7 @@ public class TeamService {
     private final com.backend.githubanalyzer.domain.commit.repository.CommitRepository commitRepository;
     private final com.backend.githubanalyzer.domain.team.repository.TeamRegisterSprintRepository teamRegisterSprintRepository;
     private final com.backend.githubanalyzer.domain.repository.repository.GithubRepositoryRepository githubRepositoryRepository;
+    private final com.backend.githubanalyzer.domain.notification.service.NotificationService notificationService;
 
     @Transactional
     public void addMemberToTeam(Team team, User user, String role) {
@@ -139,6 +140,7 @@ public class TeamService {
     }
 
     // 1. 팀 생성
+    @Transactional
     public com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse createTeam(
             com.backend.githubanalyzer.domain.team.dto.TeamCreateRequest request) {
         User leader = userRepository.findById(request.leaderId())
@@ -147,10 +149,11 @@ public class TeamService {
         String teamId = java.util.UUID.randomUUID().toString();
 
         Team team = Team.builder()
-                .id(teamId) // String ID
+                .id(teamId)
                 .name(request.name())
                 .description(request.description())
                 .leader(leader)
+                .isPublic(request.isPublic() != null ? request.isPublic() : true)
                 .build();
 
         teamRepository.save(team);
@@ -165,8 +168,6 @@ public class TeamService {
                 .status("APPROVED")
                 .inTeamRank(0L)
                 .build();
-
-        userRegisterTeamRepository.save(member);
 
         userRegisterTeamRepository.save(member);
 
@@ -187,7 +188,9 @@ public class TeamService {
 
         team.setName(request.name());
         team.setDescription(request.description());
-        // team.setIsPublic(request.isPublic()); // If we want to allow public switch
+        if (request.isPublic() != null) {
+            team.setIsPublic(request.isPublic());
+        }
 
         teamRepository.save(team);
         return com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse.from(team);
@@ -202,13 +205,6 @@ public class TeamService {
         boolean isMember = isUserInTeam(teamId, user.getId());
         boolean isLeader = team.getLeader().getId().equals(user.getId());
 
-        // Sprint Manager check? (Req 9)
-        // Need to check if this team is in any sprint managed by 'user'
-        // Complex query: Find Sprints where (Manager=user AND TeamRegistered in Sprint)
-        // Or simplified: Pass a flag if caller is manager context.
-        // For general API, we'll check:
-        // isPublic OR isMember OR isLeader -> Full Details
-
         // Check if user is manager of ANY sprint this team is in
         boolean isSprintManager = teamRegisterSprintRepository.findAllByTeamId(teamId).stream()
                 .anyMatch(reg -> reg.getSprint().getManager().getId().equals(user.getId()));
@@ -222,10 +218,13 @@ public class TeamService {
     }
 
     @Transactional
-    public com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse joinTeam(String teamId, User user,
-            String code) {
+    public com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse joinTeam(String teamId, User user) {
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new IllegalArgumentException("Team not found"));
+
+        if (team.getLeader().getId().equals(user.getId())) {
+            throw new IllegalStateException("Team Leader cannot join their own team as a regular member.");
+        }
 
         if (isUserInTeam(teamId, user.getId())) {
             throw new IllegalStateException("Already a member or has a pending request.");
@@ -233,10 +232,7 @@ public class TeamService {
 
         String status = "APPROVED";
         if (!team.getIsPublic()) {
-            // Private Team: Check Code
-            if (!team.getId().equals(code)) {
-                throw new AccessDeniedException("Invalid Team Code.");
-            }
+            // Private Team: teamId acts as the join code (already provided in path)
             status = "PENDING";
         }
 
@@ -275,6 +271,11 @@ public class TeamService {
         membership.setStatus("APPROVED");
         UserRegisterTeam saved = userRegisterTeamRepository.save(membership);
 
+        // Send Notification
+        notificationService.send(saved.getUser().getId(),
+                com.backend.githubanalyzer.domain.notification.entity.NotificationType.TEAM_JOIN_APPROVED,
+                "Your request to join team '" + team.getName() + "' has been approved.");
+
         return new com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse(
                 saved.getUser().getId(),
                 saved.getUser().getUsername(),
@@ -308,6 +309,11 @@ public class TeamService {
                 .orElseThrow(() -> new IllegalArgumentException("User is not in the team."));
 
         userRegisterTeamRepository.delete(membership);
+
+        // Send Notification
+        notificationService.send(userId,
+                com.backend.githubanalyzer.domain.notification.entity.NotificationType.TEAM_BAN,
+                "You have been removed from team '" + team.getName() + "'.");
     }
 
     // 2. 팀 멤버 조회 (DTO 반환)
@@ -469,5 +475,17 @@ public class TeamService {
                 .pushedAt(repository.getPushedAt())
                 .lastSyncAt(repository.getLastSyncAt())
                 .build();
+    }
+
+    @Transactional(readOnly = true)
+    public com.backend.githubanalyzer.global.dto.PageResponse<com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse> getPublicTeamsPaging(org.springframework.data.domain.Pageable pageable) {
+        // Sort check: user wants createdAt DESC
+        org.springframework.data.domain.Page<Team> page = teamRepository.findByIsPublicTrue(pageable);
+        
+        List<com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse> content = page.getContent().stream()
+                .map(com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse::from)
+                .collect(Collectors.toList());
+        
+        return com.backend.githubanalyzer.global.dto.PageResponse.of(content, page.hasNext());
     }
 }

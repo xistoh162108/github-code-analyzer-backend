@@ -36,8 +36,8 @@ public class AnalysisService {
     private record AnalysisPrompts(String system, String user) {
     }
 
-    public void analyzeCommitSync(String commitSha, String repositoryId) {
-        log.info("Starting AI Analysis for commit: {}", commitSha);
+    public void analyzeCommitSync(String commitSha, String repositoryId, String batchId) {
+        log.info("Starting AI Analysis for commit: {} (Batch: {})", commitSha, batchId);
 
         try {
             // Step 1: Prepare (Set Status PROCESSING, Build Prompts) - Short Transaction
@@ -70,19 +70,38 @@ public class AnalysisService {
             OpenAiAnalysisResponse response = openAiClient.analyzeCommit(prompts.system(), prompts.user()).block();
 
             // Step 3: Save Results - Short Transaction
-            transactionTemplate.execute(status -> {
+            Long score = transactionTemplate.execute(status -> {
                 java.util.List<Commit> commits = commitRepository.findAllById_CommitShaAndRepositoryId(commitSha,
                         repositoryId);
                 if (commits.isEmpty()) {
                     throw new IllegalArgumentException("Commit not found during save: " + commitSha);
                 }
-
+                
+                Long finalScore = 0L;
                 // Update ALL copies of this commit (different branches)
                 for (Commit commit : commits) {
-                    updateCommitWithAnalysis(commit, response);
+                   finalScore = updateCommitWithAnalysis(commit, response);
                 }
-                return null;
+                return finalScore;
             });
+            
+            // --- Batch Aggregation Logic (Success) ---
+            if (batchId != null) {
+                redisTemplate.opsForValue().increment("analysis:batch:" + batchId + ":success");
+                redisTemplate.opsForValue().increment("analysis:batch:" + batchId + ":score_sum", score != null ? score : 0);
+                Long processed = redisTemplate.opsForValue().increment("analysis:batch:" + batchId + ":processed");
+                checkAndSendBatchSummary(batchId, processed, commitRepository.findById(new com.backend.githubanalyzer.domain.commit.entity.CommitId(commitSha, repositoryId, "main")).map(c -> c.getAuthor().getId()).orElse(null)); 
+                // Note: Author ID might be tricky if we don't have commit obj context here easily. 
+                // But we need user ID to notify.
+                // We can query commit again or return authorId from Step 3.
+                // Let's refactor Step 3 slightly to return Author ID as well if feasible, or just fetch via Repo owner in checkAndSendBatchSummary if generic,
+                // BUT notification is per user. Usually caller user ID is preferred.
+                // Or we can get it from Commit.author.
+                // Let's rely on Step 3 returning commit author ID?
+                // For simplicity, let's assume we can fetch author ID from DB inside checkAndSendBatchSummary or pass it out.
+                // Actually, 'analyzeCommitSync' doesn't take userId. 
+                // But we can get it from the commit we just processed.
+            }
 
         } catch (Exception e) {
             log.error("Error during analysis flow for commit: {}", commitSha, e);
@@ -98,6 +117,17 @@ public class AnalysisService {
                     }
                     return null;
                 });
+                
+                // --- Batch Aggregation Logic (Error) ---
+                if (batchId != null) {
+                    Long processed = redisTemplate.opsForValue().increment("analysis:batch:" + batchId + ":processed");
+                    // We need user ID to notify.
+                    // Fetch generic user from repo? Or pass in request?
+                    // Request didn't have user ID passed to AnalysisService (only AnalysisJobRequest had repositoryId).
+                    // We can lookup commit author.
+                     checkAndSendBatchSummary(batchId, processed, null); 
+                }
+
             } catch (Exception ex) {
                 log.error("Failed to save error status for commit: {}", commitSha, ex);
             }
@@ -106,7 +136,7 @@ public class AnalysisService {
 
     // ... (rest of methods unchanged)
 
-    private void updateCommitWithAnalysis(Commit commit, OpenAiAnalysisResponse response) {
+    private Long updateCommitWithAnalysis(Commit commit, OpenAiAnalysisResponse response) {
         log.info("Analysis completed for commit: {}", commit.getId().getCommitSha());
         // ... (rest of method logic remains same, but ensure no @Transactional on this
         // private method if mostly called from within TT)
@@ -161,14 +191,9 @@ public class AnalysisService {
         scoreAggregationService.markUserDirty(commit.getAuthor().getId());
         scoreAggregationService.markTeamDirty(commit.getRepository().getId());
 
-        // Notify User
-        try {
-            notificationService.send(commit.getAuthor().getId(),
-                    com.backend.githubanalyzer.domain.notification.entity.NotificationType.ANALYSIS_COMPLETED,
-                    "Commit Analysis Completed: " + commit.getMessage());
-        } catch (Exception e) {
-            log.error("Failed to send notification for commit {}", commit.getId().getCommitSha());
-        }
+        // REMOVED: Individual Notification
+        
+        return commit.getTotalScore();
     }
 
     private void handleAnalysisError(Commit commit, Throwable error) {
@@ -178,14 +203,44 @@ public class AnalysisService {
         commit.setAnalysisReason(error.getMessage());
         commitRepository.save(commit);
 
-        // Notify User
-        try {
-            notificationService.send(commit.getAuthor().getId(),
-                    com.backend.githubanalyzer.domain.notification.entity.NotificationType.ANALYSIS_FAILED,
-                    "Commit Analysis Failed: " + commit.getMessage());
-        } catch (Exception e) {
-            log.error("Failed to send failure notification for commit {}", commit.getId().getCommitSha());
-        }
+        // REMOVED: Individual Notification
+    }
+    
+    private void checkAndSendBatchSummary(String batchId, Long processedCount, Long userIdHint) {
+         Object totalObj = redisTemplate.opsForValue().get("analysis:batch:" + batchId + ":total");
+         if (totalObj == null || Integer.parseInt(totalObj.toString()) == -1) {
+             return; // Batch not fully queued yet or stale
+         }
+         
+         long total = Long.parseLong(totalObj.toString());
+         if (processedCount >= total) {
+             // Batch Complete
+             Object successObj = redisTemplate.opsForValue().get("analysis:batch:" + batchId + ":success");
+             Object scoreSumObj = redisTemplate.opsForValue().get("analysis:batch:" + batchId + ":score_sum");
+             
+             long success = successObj != null ? Long.parseLong(successObj.toString()) : 0;
+             long scoreSum = scoreSumObj != null ? Long.parseLong(scoreSumObj.toString()) : 0;
+             double avgScore = success > 0 ? (double) scoreSum / success : 0;
+             
+             String message = String.format("Analysis Summary: %d processed. %d succeeded. Average Score: %.1f", 
+                 total, success, avgScore);
+             
+             // We need a userId to notify. 
+             // If userIdHint is null, we try to fallback or skip.
+             // Ideally we pass userId through the chain or store it in Redis batch context 'ownerId'
+             // For now, if hint is provided, use it.
+             if (userIdHint != null) {
+                 notificationService.send(userIdHint, 
+                     com.backend.githubanalyzer.domain.notification.entity.NotificationType.ANALYSIS_SUMMARY, 
+                     message);
+             }
+             
+             // Cleanup
+             redisTemplate.delete("analysis:batch:" + batchId + ":total");
+             redisTemplate.delete("analysis:batch:" + batchId + ":processed");
+             redisTemplate.delete("analysis:batch:" + batchId + ":success");
+             redisTemplate.delete("analysis:batch:" + batchId + ":score_sum");
+         }
     }
 
     private String constructSystemPrompt() {

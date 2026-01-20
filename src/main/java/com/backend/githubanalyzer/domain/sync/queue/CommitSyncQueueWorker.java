@@ -66,7 +66,7 @@ public class CommitSyncQueueWorker {
                     job.getOwner(), job.getRepoName(), job.getSha(), token).block();
 
             if (detailedDto != null) {
-                githubPersistenceService.saveCommit(repository, user, job.getBranchName(), detailedDto);
+                githubPersistenceService.saveCommit(repository, user, job.getBranchName(), detailedDto, job.getBatchId());
             }
         } catch (Exception e) {
             log.error("Failed to execute queued sync job for commit {}", job.getSha(), e);

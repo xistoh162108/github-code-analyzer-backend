@@ -72,15 +72,14 @@ public class TeamController {
                 teamService.getMyTeams(currentUser.getId())));
     }
 
-    // 5. 팀 가입 신청 (Code required for private)
-    @io.swagger.v3.oas.annotations.Operation(summary = "Join Team (팀 가입 신청)", description = "팀에 가입을 신청합니다. 비공개 팀의 경우 가입 코드가 필요할 수 있습니다.")
+    // 5. 팀 가입 신청 (teamId acts as code for private)
+    @io.swagger.v3.oas.annotations.Operation(summary = "Join Team (팀 가입 신청)", description = "팀에 가입을 신청합니다. 비공개 팀의 경우 teamId가 가입 코드로 사용됩니다.")
     @PostMapping("/{teamId}/join")
     public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse>> joinTeam(
-            @PathVariable String teamId,
-            @io.swagger.v3.oas.annotations.Parameter(description = "비공개 팀 가입 코드") @RequestParam(required = false) String code) {
+            @PathVariable String teamId) {
         User currentUser = getCurrentUser();
         com.backend.githubanalyzer.domain.team.dto.TeamMemberResponse response = teamService.joinTeam(teamId,
-                currentUser, code);
+                currentUser);
         return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(response));
     }
 
@@ -137,7 +136,6 @@ public class TeamController {
         return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(null));
     }
 
-    // 11. 팀 소유 레포지토리 조회 (Visibility checked)
     @io.swagger.v3.oas.annotations.Operation(summary = "Get Team Repos (팀 레포지토리 조회)", description = "팀에 등록된 레포지토리 목록을 조회합니다.")
     @GetMapping("/{teamId}/repos")
     public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<List<com.backend.githubanalyzer.domain.repository.dto.GithubRepositoryResponse>>> getTeamRepos(
@@ -145,6 +143,15 @@ public class TeamController {
         User currentUser = getCurrentUser();
         return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(
                 teamService.getTeamRepos(teamId, currentUser)));
+    }
+
+    @io.swagger.v3.oas.annotations.Operation(summary = "List Public Teams Paginated (공개 팀 페이징 조회)", description = "공개 팀 목록을 페이징하여 조회합니다. (최신순)")
+    @GetMapping("/public")
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.global.dto.PageResponse<com.backend.githubanalyzer.domain.team.dto.TeamDetailResponse>>> getPublicTeams(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size, org.springframework.data.domain.Sort.by("createdAt").descending());
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(teamService.getPublicTeamsPaging(pageable)));
     }
 
     private User getCurrentUser() {

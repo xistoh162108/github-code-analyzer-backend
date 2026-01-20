@@ -9,6 +9,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -27,6 +29,7 @@ public class SprintService {
 
     private final com.backend.githubanalyzer.global.webhook.WebhookService webhookService;
     private final com.backend.githubanalyzer.domain.team.repository.TeamHasRepoRepository teamHasRepoRepository;
+    private final com.backend.githubanalyzer.domain.notification.service.NotificationService notificationService;
     // Injecting TeamHasRepoId is not needed as we can instantiate it or use findBy match
 
     public java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintTeamRankingResponse> getSprintRankings(
@@ -253,6 +256,11 @@ public class SprintService {
             throw new IllegalStateException("Sprint is closed for registration.");
         }
 
+        // Constraint: Sprint Manager cannot register a team they lead into their own sprint
+        if (sprint.getManager().getId().equals(userId)) {
+            throw new IllegalStateException("Sprint Manager cannot register their own team for the sprint they manage.");
+        }
+
         com.backend.githubanalyzer.domain.team.entity.Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new IllegalArgumentException("Team not found"));
 
@@ -326,7 +334,14 @@ public class SprintService {
             reg.setStatus("APPROVED");
             // Trigger Webhook
             try {
-                if (reg.getTeam() != null && reg.getRepository() != null) {
+                    // Notify all team members
+                    List<com.backend.githubanalyzer.domain.team.entity.UserRegisterTeam> members = userRegisterTeamRepository.findByTeamId(reg.getTeam().getId());
+                    for (com.backend.githubanalyzer.domain.team.entity.UserRegisterTeam member : members) {
+                        notificationService.send(member.getUser().getId(),
+                                com.backend.githubanalyzer.domain.notification.entity.NotificationType.SPRINT_JOIN,
+                                "Your team '" + reg.getTeam().getName() + "' has joined the sprint '" + sprint.getName() + "'.");
+                    }
+
                     com.backend.githubanalyzer.global.webhook.WebhookService.WebhookResult result = webhookService
                             .sendTeamRepoUrl(reg.getTeam().getName(), reg.getRepository().getRepoUrl());
 
@@ -336,7 +351,7 @@ public class SprintService {
                             result.success(),
                             result.errorMessage());
                 }
-            } catch (Exception e) {
+            catch (Exception e) {
                 log.error("Failed to trigger webhook during sprint registration approval: {}", e.getMessage());
                 return com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse.from(reg, null, false,
                         e.getMessage());
@@ -360,6 +375,22 @@ public class SprintService {
             return com.backend.githubanalyzer.domain.sprint.dto.SprintResponse.from(sprint, teamsCount,
                     participantsCount, status);
         }).collect(java.util.stream.Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public com.backend.githubanalyzer.global.dto.PageResponse<com.backend.githubanalyzer.domain.sprint.dto.SprintResponse> getPublicSprintsPaging(org.springframework.data.domain.Pageable pageable) {
+        org.springframework.data.domain.Page<Sprint> page = sprintRepository.findByIsPrivateFalse(pageable);
+        
+        java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintResponse> content = page.getContent().stream()
+                .map(sprint -> {
+                    long teamsCount = teamRegisterSprintRepository.countBySprintId(sprint.getId());
+                    long participantsCount = teamRegisterSprintRepository.countParticipantsBySprintId(sprint.getId());
+                    String status = determineStatus(sprint);
+                    return com.backend.githubanalyzer.domain.sprint.dto.SprintResponse.from(sprint, teamsCount,
+                            participantsCount, status);
+                }).collect(java.util.stream.Collectors.toList());
+        
+        return com.backend.githubanalyzer.global.dto.PageResponse.of(content, page.hasNext());
     }
 
     private String determineStatus(Sprint sprint) {
@@ -427,6 +458,14 @@ public class SprintService {
                 .orElseThrow(() -> new IllegalArgumentException("Registration not found"));
 
         reg.setStatus("BANNED");
+
+        // Notify all team members
+        List<com.backend.githubanalyzer.domain.team.entity.UserRegisterTeam> members = userRegisterTeamRepository.findByTeamId(teamId);
+        for (com.backend.githubanalyzer.domain.team.entity.UserRegisterTeam member : members) {
+            notificationService.send(member.getUser().getId(),
+                    com.backend.githubanalyzer.domain.notification.entity.NotificationType.SPRINT_BAN,
+                    "Your team '" + team.getName() + "' has been banned from the sprint '" + sprint.getName() + "'.");
+        }
 
         return com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse.from(reg);
     }

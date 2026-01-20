@@ -19,4 +19,9 @@ public class CommitSyncJobRequest implements Serializable {
     private Long userId; // Platform user who initiated/associated
     private String repositoryId; // Database ID
     private String accessToken; // Token to use for this specific job
+
+    // Batch Context
+    private String batchId;
+    private Integer totalInBatch;
+
 }

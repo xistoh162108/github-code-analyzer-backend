@@ -90,12 +90,25 @@ public class GithubPersistenceService {
 
     @Transactional(readOnly = true)
     public RepositoryMetricResponse getRepositoryMetrics(String repoId) {
-        return repositoryRepository.findById(repoId)
-                .map(repo -> RepositoryMetricResponse.builder()
-                        .commitCount(repo.getCommitCount())
-                        .averageScore(repo.getScore())
-                        .build())
-                .orElse(null);
+        GithubRepository repo = repositoryRepository.findById(repoId).orElse(null);
+        if (repo == null) {
+            return null;
+        }
+
+        // Calculate Real Average Score from Analysis
+        Long sumScore = commitRepository.sumCompletedScoreByRepositoryId(repoId);
+        long countAnalyzed = commitRepository.countCompletedByRepositoryId(repoId);
+        
+        Double averageScore = 0.0;
+        if (countAnalyzed > 0 && sumScore != null) {
+            averageScore = (double) sumScore / countAnalyzed;
+        }
+
+        return RepositoryMetricResponse.builder()
+                .commitCount(repo.getCommitCount())
+                .averageScore(Math.round(averageScore * 10.0) / 10.0) // Round to 1 decimal
+                .totalScore(repo.getScore()) // Activity Score
+                .build();
     }
 
     @Transactional(readOnly = true)
@@ -155,7 +168,7 @@ public class GithubPersistenceService {
 
     @Transactional
     public void saveCommit(GithubRepository repository, User repositoryOwner, String branchName,
-            GithubCommitResponse detailedDto) {
+            GithubCommitResponse detailedDto, String batchId) {
         CommitId commitId = new CommitId(detailedDto.getSha(), repository.getId(), branchName);
         Commit existingCommit = commitRepository.findById(commitId).orElse(null);
 
@@ -202,6 +215,7 @@ public class GithubPersistenceService {
             analysisQueueProducer.pushJob(AnalysisJobRequest.builder()
                     .commitSha(commit.getId().getCommitSha())
                     .repositoryId(repository.getId())
+                    .batchId(batchId)
                     .build());
         } else {
             existingCommit.setDiff(diffBuilder.toString());

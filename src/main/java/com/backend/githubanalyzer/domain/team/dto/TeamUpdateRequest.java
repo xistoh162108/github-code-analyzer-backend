@@ -6,6 +6,8 @@ public record TeamUpdateRequest(
         @Schema(description = "Updated Team Name", example = "SRE Team")
         String name,
         @Schema(description = "Updated Team Description", example = "Site Reliability Engineering")
-        String description
+        String description,
+        @Schema(description = "Public Team Flag", example = "true")
+        Boolean isPublic
 ) {
 }

@@ -77,7 +77,7 @@ public class AnalysisQueueWorker {
                         job.getRepositoryId());
 
                 try {
-                    analysisService.analyzeCommitSync(job.getCommitSha(), job.getRepositoryId());
+                    analysisService.analyzeCommitSync(job.getCommitSha(), job.getRepositoryId(), job.getBatchId());
                 } catch (Exception e) {
                     log.error("Failed to analyze commit: {}", job.getCommitSha(), e);
                 }

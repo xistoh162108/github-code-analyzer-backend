@@ -16,4 +16,7 @@ public class AnalysisJobRequest implements Serializable {
     private String repositoryId;
     @Builder.Default
     private int retryCount = 0;
+    
+    // Batch Context
+    private String batchId;
 }
