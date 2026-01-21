@@ -56,6 +56,8 @@ public class ScoreAggregationService {
             long avgScore = (completedCount > 0) ? (totalCompletedScore / completedCount) : 0L;
 
             user.setScore(avgScore);
+            // Formula: commit count * average score
+            user.setTotalScore(totalCount * avgScore);
             user.setCommitCount(totalCount);
             userRepository.save(user);
         });

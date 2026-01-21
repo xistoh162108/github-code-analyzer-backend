@@ -14,8 +14,10 @@ public class UserProfileResponse {
     private String username;
     @Schema(description = "Profile Image URL", example = "https://github.com/johndoe.png")
     private String profileUrl;
-    @Schema(description = "Total Score", example = "1500")
+    @Schema(description = "Total Score (Accumulated)", example = "15000")
     private Long totalScore;
+    @Schema(description = "Average Score (Performance)", example = "85")
+    private Long averageScore;
     @Schema(description = "Total Commits", example = "300")
     private Long totalCommits;
     @Schema(description = "Sprints user is participating in or managed")

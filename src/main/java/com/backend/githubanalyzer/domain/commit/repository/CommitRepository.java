@@ -164,4 +164,9 @@ public interface CommitRepository extends JpaRepository<Commit, CommitId> {
                         @Param("start") java.time.LocalDateTime start,
                         @Param("end") java.time.LocalDateTime end,
                         org.springframework.data.domain.Pageable pageable);
+        // 8. Contributors Ranking by Repo (All Time)
+        @Query("SELECT c.author as user, SUM(c.totalScore) as totalScore FROM Commit c " +
+                        "WHERE c.repository.id = :repoId AND c.analysisStatus = 'COMPLETED' " +
+                        "GROUP BY c.author ORDER BY SUM(c.totalScore) DESC")
+        List<Object[]> findContributorsWithScore(@Param("repoId") String repoId);
 }

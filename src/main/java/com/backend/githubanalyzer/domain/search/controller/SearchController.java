@@ -19,7 +19,7 @@ public class SearchController {
             "**Type**: `ALL` (전체), `USER` (유저), `REPOSITORY` (레포), `TEAM` (팀)")
     @GetMapping
     public ResponseEntity<ApiResponse<UnifiedSearchResponse>> search(
-            @RequestParam String q,
+            @RequestParam(required = false, defaultValue = "") String q,
             @RequestParam(required = false, defaultValue = "ALL") String type) {
         return ResponseEntity.ok(ApiResponse.success(searchService.search(q, type)));
     }

@@ -113,16 +113,51 @@ public class GithubPersistenceService {
 
     @Transactional(readOnly = true)
     public List<ContributorResponse> getContributors(String repoId) {
+        // 1. Fetch all known contributors (for roles)
         List<Contribution> contributions = contributionRepository.findAllByRepositoryIdOrderByRankAsc(repoId);
-        return contributions.stream()
-                .map(c -> ContributorResponse.builder()
+        
+        // 2. Fetch actual scores from commits in this repo
+        List<Object[]> scoreResults = commitRepository.findContributorsWithScore(repoId);
+        
+        // Map: UserId -> Score
+        java.util.Map<Long, Long> scoreMap = scoreResults.stream()
+            .collect(Collectors.toMap(
+                row -> ((User) row[0]).getId(),
+                row -> (Long) row[1]
+            ));
+
+        // 3. Merge and Build Response List
+        List<ContributorResponse> responseList = contributions.stream()
+            .map(c -> {
+                Long userId = c.getUser().getId();
+                Long score = scoreMap.getOrDefault(userId, 0L);
+                return ContributorResponse.builder()
                         .username(c.getUser().getUsername())
                         .profileUrl(c.getUser().getProfileUrl())
                         .role(c.getContributionType().name())
-                        .rank(c.getRank())
-                        .score(c.getUser().getScore())
-                        .build())
-                .collect(Collectors.toList());
+                        .score(score) // Use local repo score, not global user score
+                        .build();
+            })
+            .collect(Collectors.toList());
+
+        // 4. Sort by Score DESC, then Username
+        responseList.sort(java.util.Comparator.comparing(ContributorResponse::getScore, java.util.Comparator.reverseOrder())
+                .thenComparing(ContributorResponse::getUsername));
+
+        // 5. Assign Ranks
+        long rank = 1;
+        List<ContributorResponse> rankedList = new java.util.ArrayList<>();
+        for (ContributorResponse resp : responseList) {
+            rankedList.add(new ContributorResponse(
+                resp.getUsername(),
+                resp.getProfileUrl(),
+                resp.getRole(),
+                rank++,
+                resp.getScore()
+            ));
+        }
+
+        return rankedList;
     }
 
     @Transactional

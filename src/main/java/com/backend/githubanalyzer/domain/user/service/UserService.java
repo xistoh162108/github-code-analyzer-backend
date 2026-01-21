@@ -163,6 +163,8 @@ public class UserService {
 
                         u.setCommitCount(totalCount);
                         u.setScore(avgScore);
+                        // Formula: commit count * average score
+                        u.setTotalScore(totalCount * avgScore);
                         userRepository.save(u);
                 });
         }

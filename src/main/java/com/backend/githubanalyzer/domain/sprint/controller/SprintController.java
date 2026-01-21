@@ -38,7 +38,7 @@ public class SprintController {
             @RequestParam(defaultValue = "10") int size) {
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size, 
             org.springframework.data.domain.Sort.by("isOpen").descending()
-            .and(org.springframework.data.domain.Sort.by("createdAt").descending()));
+            .and(org.springframework.data.domain.Sort.by("startDate").descending()));
         return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(sprintService.getPublicSprintsPaging(pageable)));
     }
 
@@ -107,6 +107,13 @@ public class SprintController {
                 .success(sprintService.banTeam(sprintId, teamId, currentUser)));
     }
 
+    @io.swagger.v3.oas.annotations.Operation(summary = "List Sprint Registrations (참가 신청 목록 조회)", description = "특정 스프린트의 모든 참가 신청(팀) 목록을 조회합니다.")
+    @GetMapping("/{sprintId}/registrations")
+    public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<List<com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse>>> getSprintRegistrations(
+            @PathVariable String sprintId) {
+        return ResponseEntity.ok(com.backend.githubanalyzer.global.dto.ApiResponse.success(sprintService.getSprintRegistrations(sprintId)));
+    }
+
     @io.swagger.v3.oas.annotations.Operation(summary = "Get Basic Sprint Info (스프린트 정보 조회)", description = "ID로 스프린트의 기본 정보를 조회합니다. (비공개 스프린트 존재 여부 확인용)")
     @GetMapping("/{sprintId}/info")
     public ResponseEntity<com.backend.githubanalyzer.global.dto.ApiResponse<com.backend.githubanalyzer.domain.sprint.dto.SprintInfoResponse>> getSprintInfo(
@@ -115,8 +122,9 @@ public class SprintController {
     }
 
     private User getCurrentUser() {
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + username));
+        String principal = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByEmail(principal)
+                .or(() -> userRepository.findByUsername(principal))
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + principal));
     }
 }

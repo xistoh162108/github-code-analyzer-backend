@@ -42,12 +42,4 @@ public class Sprint {
     @Column(name = "is_open", nullable = false)
     @Builder.Default
     private Boolean isOpen = false;
-
-    @Column(name = "created_at", nullable = false)
-    private java.time.LocalDateTime createdAt;
-
-    @PrePersist
-    protected void onCreate() {
-        createdAt = java.time.LocalDateTime.now();
-    }
 }

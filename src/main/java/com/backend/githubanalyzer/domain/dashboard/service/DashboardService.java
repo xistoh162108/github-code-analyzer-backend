@@ -73,7 +73,8 @@ public class DashboardService {
         return UserProfileResponse.builder()
                 .username(user.getUsername())
                 .profileUrl(user.getProfileUrl())
-                .totalScore(user.getScore())
+                .totalScore(user.getTotalScore())
+                .averageScore(user.getScore()) // Maps to User.score (Average)
                 .totalCommits(totalCommits)
                 .participatingSprints(mySprints)
                 .build();

@@ -8,22 +8,21 @@ import com.backend.githubanalyzer.global.dto.ApiResponse;
 import com.backend.githubanalyzer.security.jwt.JwtUtil;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import lombok.RequiredArgsConstructor;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
 @io.swagger.v3.oas.annotations.tags.Tag(name = "User & Dashboard", description = "유저 프로필 및 개인 대시보드 API")
+@RequiredArgsConstructor
 public class UserController {
 
     private final UserService userService;
     private final com.backend.githubanalyzer.domain.commit.service.CommitService commitService;
+    private final com.backend.githubanalyzer.domain.dashboard.service.DashboardService dashboardService;
+    private final com.backend.githubanalyzer.domain.user.repository.UserRepository userRepository;
 
-    public UserController(UserService userService,
-            com.backend.githubanalyzer.domain.commit.service.CommitService commitService) {
-        this.userService = userService;
-        this.commitService = commitService;
-    }
 
     @io.swagger.v3.oas.annotations.Operation(summary = "Get My Profile (내 정보 조회)", description = "로그인한 유저의 상세 정보를 조회합니다.")
     @GetMapping("/me")
@@ -75,5 +74,25 @@ public class UserController {
             @PathVariable Long userId,
             @PathVariable String repoId) {
         return ResponseEntity.ok(ApiResponse.success(commitService.getUserCommitsInRepo(userId, repoId)));
+    }
+
+    @io.swagger.v3.oas.annotations.Operation(summary = "My Dashboard (내 대시보드 조회)", description = "로그인한 사용자의 개인 통계(Streak, 총 커밋 수, 최근 활동 등)를 조회합니다.")
+    @GetMapping("/me/dashboard")
+    public ResponseEntity<ApiResponse<com.backend.githubanalyzer.domain.dashboard.dto.DashboardStatsResponse>> getMyDashboard() {
+        com.backend.githubanalyzer.domain.user.entity.User currentUser = getCurrentUser();
+        return ResponseEntity.ok(ApiResponse.success(dashboardService.getDashboardStats(currentUser.getId())));
+    }
+
+    @io.swagger.v3.oas.annotations.Operation(summary = "User Profile (유저 공개 프로필 조회)", description = "특정 유저의 공개 프로필 정보(뱃지, 티어, 기본 정보)를 조회합니다.")
+    @GetMapping("/{username}/profile")
+    public ResponseEntity<ApiResponse<com.backend.githubanalyzer.domain.dashboard.dto.UserProfileResponse>> getUserProfile(@PathVariable String username) {
+        return ResponseEntity.ok(ApiResponse.success(dashboardService.getUserProfile(username)));
+    }
+
+    private com.backend.githubanalyzer.domain.user.entity.User getCurrentUser() {
+        String principal = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByEmail(principal)
+                .or(() -> userRepository.findByUsername(principal))
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + principal));
     }
 }

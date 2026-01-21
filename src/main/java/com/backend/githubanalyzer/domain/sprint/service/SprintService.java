@@ -530,4 +530,10 @@ public class SprintService {
         Sprint sprint = getSprint(sprintId);
         return com.backend.githubanalyzer.domain.sprint.dto.SprintInfoResponse.from(sprint, determineStatus(sprint));
     }
+    public java.util.List<com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse> getSprintRegistrations(
+            String sprintId) {
+        return teamRegisterSprintRepository.findAllBySprintId(sprintId).stream()
+                .map(com.backend.githubanalyzer.domain.sprint.dto.SprintRegistrationResponse::from)
+                .collect(java.util.stream.Collectors.toList());
+    }
 }

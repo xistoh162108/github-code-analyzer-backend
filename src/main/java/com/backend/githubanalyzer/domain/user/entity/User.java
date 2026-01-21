@@ -56,7 +56,11 @@ public class User {
 
     @Column(nullable = false)
     @Builder.Default
-    private Long score = 0L;
+    private Long score = 0L; // Average Score
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Long totalScore = 0L; // Accumulated Score (Sum of all commit scores)
 
     private String installationId;
 
