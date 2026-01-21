@@ -72,4 +72,32 @@ public class OpenAiClient {
                             return retrySignal.failure();
                         }));
     }
+
+    public Mono<String> chat(List<Map<String, String>> messages) {
+        if (apiKey == null || apiKey.isEmpty()) {
+            return Mono.error(new IllegalStateException("OpenAI API Key is not configured."));
+        }
+
+        Map<String, Object> requestBody = Map.of(
+                "model", model,
+                "messages", messages);
+
+        return webClient.post()
+                .uri("https://api.openai.com/v1/chat/completions")
+                .header("Authorization", "Bearer " + apiKey)
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .doOnSuccess(v -> metricsService.incrementExternalRequest("openai_chat_success"))
+                .doOnError(e -> metricsService.incrementExternalRequest("openai_chat_error"))
+                .map(response -> {
+                    try {
+                        List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
+                        return (String) ((Map<String, Object>) choices.get(0).get("message")).get("content");
+                    } catch (Exception e) {
+                        log.error("Failed to parse OpenAI chat response", e);
+                        throw new RuntimeException("AI chat response parsing failed", e);
+                    }
+                });
+    }
 }

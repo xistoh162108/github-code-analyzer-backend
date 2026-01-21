@@ -24,6 +24,8 @@ public interface CommitRepository extends JpaRepository<Commit, CommitId> {
 
         java.util.List<Commit> findAllById_CommitShaAndRepositoryId(String commitSha, String repoId);
 
+        java.util.List<Commit> findAllById_CommitShaInAndRepositoryId(List<String> commitShas, String repoId);
+
         boolean existsById_CommitSha(String commitSha);
 
         List<Commit> findAllByRepositoryIdAndId_BranchName(String repoId, String branchName);
@@ -164,6 +166,15 @@ public interface CommitRepository extends JpaRepository<Commit, CommitId> {
                         @Param("start") java.time.LocalDateTime start,
                         @Param("end") java.time.LocalDateTime end,
                         org.springframework.data.domain.Pageable pageable);
+        @Query("SELECT DISTINCT c.id.branchName FROM Commit c WHERE c.repository.id = :repoId")
+        List<String> findDistinctBranchNamesByRepositoryId(@Param("repoId") String repoId);
+
+        long countById_RepoIdAndId_BranchName(String repoId, String branchName);
+
+        List<Commit> findAllByRepositoryIdAndId_BranchNameOrderByCommittedAtDesc(String repoId, String branchName);
+
+        Commit findFirstById_RepoIdAndId_BranchNameOrderByCommittedAtDesc(String repoId, String branchName);
+
         // 8. Contributors Ranking by Repo (All Time)
         @Query("SELECT c.author as user, SUM(c.totalScore) as totalScore FROM Commit c " +
                         "WHERE c.repository.id = :repoId AND c.analysisStatus = 'COMPLETED' " +

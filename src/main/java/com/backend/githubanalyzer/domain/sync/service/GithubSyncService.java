@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -394,5 +395,80 @@ public class GithubSyncService {
              redisTemplate.delete("analysis:batch:" + batchId + ":success");
              redisTemplate.delete("analysis:batch:" + batchId + ":score_sum");
         }
+    }
+
+    // --- Branch API Implementation ---
+
+    public List<com.backend.githubanalyzer.domain.repository.dto.RepositoryBranchResponse> getRepositoryBranches(String repoId) {
+        GithubRepository repository = githubPersistenceService.findById(repoId);
+        if (repository == null) {
+            throw new IllegalArgumentException("Repository not found: " + repoId);
+        }
+
+        // Fetch distinct branches from DB
+        List<String> branches = commitRepository.findDistinctBranchNamesByRepositoryId(repoId);
+        log.info("Found {} branches in DB for repo {}", branches.size(), repository.getReponame());
+
+        return branches.stream()
+                .map(branchName -> {
+                    long count = commitRepository.countById_RepoIdAndId_BranchName(repoId, branchName);
+                    com.backend.githubanalyzer.domain.commit.entity.Commit latestCommit = 
+                            commitRepository.findFirstById_RepoIdAndId_BranchNameOrderByCommittedAtDesc(repoId, branchName);
+                    
+                    return com.backend.githubanalyzer.domain.repository.dto.RepositoryBranchResponse.builder()
+                            .name(branchName)
+                            .lastCommitSha(latestCommit != null ? latestCommit.getId().getCommitSha() : null)
+                            .commitCount(count)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
+    public List<com.backend.githubanalyzer.domain.commit.dto.CommitResponse> getCommitsByBranch(String repoId, String branchName) {
+        GithubRepository repository = githubPersistenceService.findById(repoId);
+        if (repository == null) {
+            throw new IllegalArgumentException("Repository not found: " + repoId);
+        }
+
+        // Fetch commits directly from DB, sorted by latest first
+        log.info("Fetching commits from DB for repo {} branch {}", repoId, branchName);
+        List<com.backend.githubanalyzer.domain.commit.entity.Commit> commits = 
+                commitRepository.findAllByRepositoryIdAndId_BranchNameOrderByCommittedAtDesc(repoId, branchName);
+
+        if (commits.isEmpty()) {
+            // Optional: If DB is empty, maybe trigger a sync? 
+            // For now, trusting the user's intent to rely on DB.
+            return java.util.Collections.emptyList();
+        }
+
+        return commits.stream()
+                .map(this::toCommitResponse)
+                .collect(Collectors.toList());
+    }
+
+    private com.backend.githubanalyzer.domain.commit.dto.CommitResponse toCommitResponse(com.backend.githubanalyzer.domain.commit.entity.Commit commit) {
+        return com.backend.githubanalyzer.domain.commit.dto.CommitResponse.builder()
+                .sha(commit.getId().getCommitSha())
+                .message(commit.getMessage())
+                .committedAt(commit.getCommittedAt())
+                .authorName(commit.getAuthor().getUsername())
+                .authorProfileUrl(commit.getAuthor().getProfileUrl())
+                .analysisStatus(commit.getAnalysisStatus())
+                .totalScore(commit.getTotalScore())
+                .build();
+    }
+
+    private String getAccessTokenForUser(User user) {
+        // Try to get installation token first as it is more reliable for repo ops
+        String installationId = user.getInstallationId();
+        if (installationId != null) {
+            try {
+                return githubAppService.getInstallationToken(installationId);
+            } catch (Exception e) {
+                log.warn("Failed to get installation token for user {}", user.getUsername());
+            }
+        }
+        // Fallback or if no installation ID (though usually needed for meaningful sync)
+        return null; // TODO: handle user personal token if needed, but for now rely on App
     }
 }

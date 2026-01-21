@@ -56,4 +56,19 @@ public class GithubRepositoryController {
                 .syncRepo(repoId);
         return ResponseEntity.ok(ApiResponse.success("동기화 요청이 접수되었습니다.", response));
     }
+
+    @io.swagger.v3.oas.annotations.Operation(summary = "Get Repository Branches (브랜치 목록 조회)", description = "레포지토리의 브랜치 목록과 각 브랜치의 커밋 수를 조회합니다.")
+    @GetMapping("/{repoId}/branches")
+    public ResponseEntity<ApiResponse<List<com.backend.githubanalyzer.domain.repository.dto.RepositoryBranchResponse>>> getBranches(
+            @PathVariable String repoId) {
+        return ResponseEntity.ok(ApiResponse.success(githubSyncService.getRepositoryBranches(repoId)));
+    }
+
+    @io.swagger.v3.oas.annotations.Operation(summary = "Get Commits by Branch (브랜치별 커밋 조회)", description = "특정 브랜치의 커밋 목록을 최신순으로 조회합니다.")
+    @GetMapping("/{repoId}/branches/{branchName}/commits")
+    public ResponseEntity<ApiResponse<List<com.backend.githubanalyzer.domain.commit.dto.CommitResponse>>> getValCommitsByBranch(
+            @PathVariable String repoId,
+            @PathVariable String branchName) {
+        return ResponseEntity.ok(ApiResponse.success(githubSyncService.getCommitsByBranch(repoId, branchName)));
+    }
 }

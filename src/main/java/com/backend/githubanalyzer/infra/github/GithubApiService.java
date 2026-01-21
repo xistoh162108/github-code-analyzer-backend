@@ -152,6 +152,49 @@ public class GithubApiService {
                 });
     }
 
+    public Mono<Long> fetchBranchCommitCount(String owner, String repo, String branch, String accessToken) {
+        metricsService.incrementExternalRequest("github");
+        String url = String.format("/repos/%s/%s/commits?sha=%s&per_page=1", owner, repo, branch);
+        
+        return webClient.get()
+                .uri(url)
+                .header("Authorization", "Bearer " + accessToken)
+                .exchangeToMono(response -> {
+                    String linkHeader = response.headers().asHttpHeaders().getFirst("Link");
+                    if (linkHeader != null) {
+                        String lastPage = extractLastPage(linkHeader);
+                        if (lastPage != null) {
+                            try {
+                                return Mono.just(Long.parseLong(lastPage));
+                            } catch (NumberFormatException e) {
+                                log.warn("Failed to parse last page number: {}", lastPage);
+                            }
+                        }
+                    }
+                    // If no Link header or failed to parse, fallback to 1 (if success) or 0
+                    // But actually, if there is only 1 page, Link header might be missing or different.
+                    // If 200 OK, at least 1 commit.
+                    if (response.statusCode().is2xxSuccessful()) {
+                         // We could try checking the body size, but for now safe fallback is 1 if successful response
+                         // However, for precise count on small repos, we might need to check if list is empty.
+                         // But for per_page=1, if we get a result, count is at least 1.
+                         return Mono.just(1L);
+                    }
+                    return Mono.just(0L);
+                });
+    }
+
+    private String extractLastPage(String linkHeader) {
+        if (linkHeader == null) return null;
+        // Example: <https://api.github.com/...&page=2>; rel="next", <https://api.github.com/...&page=5>; rel="last"
+        Pattern pattern = Pattern.compile("[&?]page=(\\d+)[^>]*>;\\s*rel=\"last\"");
+        Matcher matcher = pattern.matcher(linkHeader);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return null;
+    }
+
     private String extractNextUrl(ClientResponse response) {
         String linkHeader = response.headers().asHttpHeaders().getFirst("Link");
         if (linkHeader == null)
